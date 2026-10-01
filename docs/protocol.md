@@ -98,13 +98,22 @@ stay useful even if `Mochi.app` has never been launched.
                                           // `provider`. See "Agent identity," below.
   "agentRole": "...",             // optional. A role/persona descriptor, if distinct from
                                     // agentDisplayName.
+  "source": "genericCLI",         // optional. Where this event came from — see "Session
+                                    // source," below. openclaw | claudeCode | codex |
+                                    // genericCLI | passiveDiscovery (never "demo" from outside
+                                    // `mochi demo` itself). Omit it and the session folds to
+                                    // `unknown` — never silently treated as anything more
+                                    // trustworthy than that.
   "sessionId": "...",            // optional. The *tool's own* session id, if different from agentId.
   "project": "Huginn",           // optional display name.
   "projectPath": "/Users/.../Huginn", // optional absolute path.
   "task": "Redesign Library",    // optional. Set at start; persists until changed.
   "status": "working",           // optional. idle | starting | working | thinking | testing |
-                                  // waiting | needsPermission | paused | done | error | offline,
-                                  // or any other string (preserved, shown as-is, future-proof).
+                                  // waiting | needsPermission | paused | done | error, or any
+                                  // other string (preserved, shown as-is, future-proof).
+                                  // `stale` and `offline` are NOT valid values to send — they
+                                  // are Mochi's own conclusions about silence (see "Session
+                                  // lifecycle," below), never something a caller asserts.
   "activity": "editing LibraryView.swift", // optional short label.
   "message": "human-readable message",     // optional, shown in the activity log.
   "attentionReason": "permission",         // optional. permission | input | decision | other.
@@ -177,6 +186,55 @@ Claude Code role you reuse across tasks), pass the same `--agent-key`/`agentKey`
 mochi start --agent claude --agent-name "Frontend Agent" --agent-key "team:frontend" \
   --project Huginn --task "Fix layout bug"
 ```
+
+## Session source
+
+A third axis, separate from both of the above: **where did this event actually come from.**
+This exists because of a real incident — `mochi demo` sessions persisted from earlier
+development testing were still showing up, as "Working," in a normal `open Mochi.app` launch
+days later. They were indistinguishable from real sessions except by reading project names
+like "Huginn" or "Serafín," which was explicitly the wrong signal to filter on: a real project
+can legitimately be named anything a demo scenario also happens to use.
+
+Every session carries a `source` (`SessionSource` in code): `openclaw`, `claudeCode`, `codex`,
+`genericCLI`, `demo`, `passiveDiscovery`, or `unknown`. It's set once, from whichever event
+creates the session, and never overwritten afterward (only ever *upgraded* away from
+`unknown` if a later event finally supplies a real one). Two sources are special:
+
+- **`demo`** is set unconditionally by `mochi demo` on every event it writes — there is no
+  flag or option that lets a demo session claim to be anything else, and the plain CLI (and
+  every integration adapter) never sets it. `mochi demo --cleanup` and automatic expiry
+  (see "Session lifecycle," below) both key off this field, never off a project or agent name.
+- **`unknown`** is the honest default for an event with no `source` field at all — either
+  because it predates this field, or because it was hand-written outside the `mochi` CLI. It
+  is never auto-upgraded to something more trustworthy, and nothing that operates on a
+  specific known source (cleanup, OpenClaw-specific reconciliation) ever touches it; it just
+  participates in the generic, time-based lifecycle rules like any other non-demo session.
+
+## Session lifecycle
+
+A persisted status is historical evidence, not proof of current liveness — treating
+"the last event said working" as "therefore still working, forever" was the mechanism behind
+the incident described above. `StaleDetector.reconcileLifecycle` runs on every session restore
+and periodically thereafter (both in the live app and in the CLI's replay path, so `mochi list`
+is truthful even standalone) and does three things, based purely on how long it's been since a
+session's last event:
+
+1. **Demo sessions** past a short retention window (a couple of minutes) are removed outright,
+   regardless of status — see "Session source," above.
+2. **Active-looking sessions** (`working`, `thinking`, `testing`, `waiting`, `needsPermission`)
+   quiet for longer than `staleThreshold` (20 minutes) move to **`stale`** — "we can no longer
+   confirm this," not "we know it stopped."
+3. **Any non-terminal session** quiet for longer than `offlineThreshold` (90 minutes) moves to
+   **`offline`** — presumed gone. Both transitions are fully reversible: a single fresh event
+   for the same session id overrides either one exactly like any other status change, through
+   the ordinary event pipeline.
+
+`done` and `error` sessions are never touched — those already have real evidence behind them.
+OpenClaw sessions get one additional, faster signal: `OpenClawAdapter` remembers what it saw on
+the previous poll, and if a session it previously reported as active simply disappears from a
+fresh `sessions list --active` result, it reports `stale` immediately rather than waiting for
+the 20-minute timeout — real evidence of disappearance, not a guess.
 
 ## Resilience and concurrency, concretely
 

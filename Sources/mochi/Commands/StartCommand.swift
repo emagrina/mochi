@@ -32,6 +32,9 @@ struct StartCommand: AsyncParsableCommand {
     @Option(name: .long, help: "A role/persona descriptor, if distinct from --agent-name.")
     var agentRole: String?
 
+    @Option(name: .long, help: "Where this session is reported from: \(CLISupport.knownSources.joined(separator: ", ")). Defaults to genericCLI — a plain mochi CLI call is itself real provenance, just not a named integration.")
+    var source: String?
+
     @Option(name: .long, help: "Git branch, if known.")
     var branch: String?
 
@@ -39,6 +42,7 @@ struct StartCommand: AsyncParsableCommand {
     var json: Bool = false
 
     func run() async throws {
+        let validatedSource = try CLISupport.validate(source: source)
         let agentId = id ?? CLISupport.generateAgentId(provider: agent, project: project)
         let event = MochiEvent(
             event: .start,
@@ -47,6 +51,11 @@ struct StartCommand: AsyncParsableCommand {
             agentKey: agentKey,
             agentDisplayName: agentName,
             agentRole: agentRole,
+            // A plain mochi CLI call is real provenance in its own right — defaulting to
+            // genericCLI (rather than leaving this nil, which would fold to `.unknown`) is
+            // what makes an ordinary `mochi start` confidently distinct from legacy data
+            // that predates this field entirely.
+            source: validatedSource ?? SessionSource.genericCLI.rawValue,
             project: project,
             projectPath: projectPath,
             task: task,

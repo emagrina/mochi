@@ -20,9 +20,23 @@ struct DemoCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Seconds between each simulated step.")
     var stepDelay: Double = 2.5
 
+    @Flag(name: .long, help: "Remove all demo data (identified by source, never by name) instead of running the demo. Never touches real sessions.")
+    var cleanup: Bool = false
+
     func run() async throws {
+        if cleanup {
+            let result = DemoCleanup.removeAllDemoData()
+            if result.removedSessionCount == 0 {
+                print("No demo sessions found.")
+            } else {
+                print("Removed \(result.removedSessionCount) demo session(s) (\(result.removedFileCount) event file(s)).")
+            }
+            return
+        }
+
         let writer = EventWriter()
         print("Mochi demo: simulating \(agents) agent(s). Open Mochi.app (or run `mochi list`) to watch.")
+        print("Demo sessions auto-expire a couple of minutes after their last event — run `mochi demo --cleanup` to remove them immediately.")
 
         let scenarios = Self.scenarios(count: agents)
         await withTaskGroup(of: Void.self) { group in
@@ -175,6 +189,9 @@ struct DemoCommand: AsyncParsableCommand {
             provider: scenario.provider,
             agentKey: scenario.agentKey,
             agentDisplayName: scenario.agentName,
+            // Unconditional — see SessionSource.demo's doc comment. There is no flag or
+            // scenario option that can make a `mochi demo` session claim to be anything else.
+            source: SessionSource.demo.rawValue,
             project: scenario.project,
             projectPath: scenario.projectPath,
             task: scenario.task,

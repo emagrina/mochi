@@ -12,8 +12,8 @@ import Foundation
 ///     bearing: without it this call returns the tool's *entire* session history (every cron
 ///     run, every subagent, ever) — discovered by running this against a real, long-lived
 ///     install while building it. We also deliberately ignore `abortedLastRun`: it showed up
-///     `true` on ordinary, non-failed sessions in that same testing, so treating it as an
-///     error signal would have produced false "problem" notifications.
+///     `true` on ordinary, non-failed sessions in local testing, so it isn't a trustworthy
+///     "something went wrong" signal.
 ///   - `openclaw approvals pending --json` is a supported CLI surface for exec/plugin/
 ///     system-agent approvals via the Gateway. This is the real, non-guessed signal for
 ///     "needs you" the product spec asks for (section 37) — but we could not exercise it
@@ -31,14 +31,30 @@ import Foundation
 ///     custom hook plugin that calls the Mochi CLI directly is NOT implemented in v1 — it
 ///     needs the user's own OpenClaw plugin install/enable/restart flow to verify, so it's
 ///     documented as a next step rather than shipped half-verified.
-public struct OpenClawAdapter: IntegrationAdapter {
-    public let id = "openclaw"
-    public let displayName = "OpenClaw"
-    public let reliability: IntegrationReliability = .heuristic
+///
+/// This is an `actor`, not a `struct`, specifically so it can remember what it saw on the
+/// *previous* poll (see `previouslyActiveStatuses`) — that memory is what lets it notice a
+/// session has disappeared from OpenClaw's own active list and say so immediately, rather
+/// than only going quiet and waiting for the generic time-based staleness fallback
+/// (`StaleDetector.staleThreshold`, 20 minutes) to catch up. `IntegrationsCoordinator` only
+/// ever calls one adapter instance's `pollOnce` sequentially, never concurrently with itself,
+/// so actor isolation here is about safe mutable state across calls, not contention.
+public actor OpenClawAdapter: IntegrationAdapter {
+    public nonisolated let id = "openclaw"
+    public nonisolated let displayName = "OpenClaw"
+    public nonisolated let reliability: IntegrationReliability = .heuristic
 
     /// How far back to ask OpenClaw for sessions. Bounds both the noise (don't import its
     /// entire history) and the request cost.
     private let activeWindow: TimeInterval = 30 * 60
+
+    /// OpenClaw session key → the Mochi status we last mapped it to, for every session we saw
+    /// actively working/waiting last poll. A key that drops out of this poll's results after
+    /// being in here is real evidence it's no longer in OpenClaw's own active list — see
+    /// `pollSessions`. Only active-ish statuses are kept (never `.done`/`.error`), so a
+    /// legitimately finished session dropping out of the `--active` window later is never
+    /// mistaken for a disappearance.
+    private var previouslyActiveStatuses: [String: AgentStatus] = [:]
 
     public init() {}
 
@@ -72,6 +88,8 @@ public struct OpenClawAdapter: IntegrationAdapter {
               let root = try? JSONSerialization.jsonObject(with: result.stdout) as? [String: Any],
               let sessions = root["sessions"] as? [[String: Any]] else { return }
 
+        var stillActive: [String: AgentStatus] = [:]
+
         for session in sessions {
             guard let key = session["key"] as? String else { continue }
             let agentId = "openclaw:\(key)"
@@ -98,22 +116,18 @@ public struct OpenClawAdapter: IntegrationAdapter {
             let rawStatus = (session["status"] as? String) ?? "idle"
             let status = rawStatus.lowercased() == "running" ? AgentStatus.working : AgentStatus(rawValue: rawStatus)
 
+            if status.isActive || status == .waiting || status == .needsPermission {
+                stillActive[key] = status
+            }
+
             let event = MochiEvent(
                 event: .status,
                 agentId: agentId,
                 provider: "openclaw",
-                // Stable across every session this same OpenClaw agent runs — this is what
-                // lets Mochi recognize "these two rows are the same agent."
                 agentKey: openClawAgentId.map { "openclaw:\($0)" },
-                // identityName IS the real, user-configured name OpenClaw exposes for this
-                // agent (verified via `openclaw agents list --json`) — e.g. "Chief of Staff",
-                // "Developer". This becomes the row's PRIMARY title, not "OpenClaw".
                 agentDisplayName: agentInfo?.identityName,
+                source: SessionSource.openClaw.rawValue,
                 sessionId: session["sessionId"] as? String,
-                // `label` is a real OpenClaw-assigned description of THIS session specifically
-                // (a short nickname for a sub-thread, or a fuller task description for a
-                // spawned subagent) — it belongs in `task`, not `project`: it's about what
-                // this run is doing, not what workspace it's in.
                 project: Self.sessionKindLabel(sessionKind),
                 projectPath: agentInfo?.workspace,
                 task: session["label"] as? String,
@@ -124,6 +138,29 @@ public struct OpenClawAdapter: IntegrationAdapter {
             )
             _ = try? writer.write(event)
         }
+
+        // Real reconciliation, not just a timeout: a session we previously saw as active that
+        // is simply absent from this fresh poll is positive evidence OpenClaw itself no longer
+        // considers it active — worth reporting as `.stale` right now rather than waiting up to
+        // `StaleDetector.staleThreshold` (20 minutes) of silence to notice on its own. Not
+        // `.offline`: disappearing from the list doesn't tell us whether it finished cleanly
+        // (and just aged out of OpenClaw's own window) or crashed, so `.stale` — "no longer
+        // confirmed," not "presumed dead" — is the honest signal here.
+        let disappeared = Set(previouslyActiveStatuses.keys).subtracting(stillActive.keys)
+        for key in disappeared {
+            let event = MochiEvent(
+                event: .status,
+                agentId: "openclaw:\(key)",
+                provider: "openclaw",
+                source: SessionSource.openClaw.rawValue,
+                status: AgentStatus.stale.rawValue,
+                message: "No longer visible in OpenClaw's active session list.",
+                metadata: ["openclawSessionKey": key],
+                timestamp: Date()
+            )
+            _ = try? writer.write(event)
+        }
+        previouslyActiveStatuses = stillActive
     }
 
     /// A human label for the kind of session this is, when it adds information beyond "this
@@ -160,6 +197,7 @@ public struct OpenClawAdapter: IntegrationAdapter {
                 event: .attention,
                 agentId: "openclaw:\(identifier)",
                 provider: "openclaw",
+                source: SessionSource.openClaw.rawValue,
                 status: AgentStatus.needsPermission.rawValue,
                 message: reason,
                 attentionReason: "permission",

@@ -40,6 +40,7 @@ public struct ProcessDiscoveryAdapter: IntegrationAdapter {
                 event: .status,
                 agentId: "detected:\(provider):\(pid)",
                 provider: provider,
+                source: SessionSource.passiveDiscovery.rawValue,
                 status: AgentStatus.idle.rawValue,
                 message: nil,
                 pid: pid,

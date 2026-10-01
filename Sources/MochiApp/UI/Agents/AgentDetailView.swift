@@ -28,7 +28,14 @@ struct AgentDetailView: View {
         HStack(spacing: 12) {
             MochiAvatar(status: session.status, provider: session.provider, size: 44)
             VStack(alignment: .leading, spacing: 2) {
-                Text(session.displayName).font(.headline)
+                HStack(spacing: 4) {
+                    Text(session.displayName).font(.headline)
+                    if session.source == .demo {
+                        Text("· Demo")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(MochiColors.attention)
+                    }
+                }
                 let context = [session.agentIdentity.secondaryDescriptor, session.projectName].compactMap { $0 }.joined(separator: " · ")
                 if !context.isEmpty {
                     Text(context).font(.subheadline).foregroundStyle(.secondary)
@@ -47,18 +54,27 @@ struct AgentDetailView: View {
 
     private var infoGrid: some View {
         VStack(alignment: .leading, spacing: 6) {
+            row("Source", sourceLabel)
             row("Provider", session.provider.displayName)
+            row("Agent key", session.agentIdentity.key)
             if let task = session.currentTask { row("Task", task) }
             if let activity = session.currentActivity { row("Activity", activity) }
             row("Started", session.startedAt.formatted(date: .abbreviated, time: .shortened))
             if let finished = session.finishedAt {
                 row("Finished", finished.formatted(date: .abbreviated, time: .shortened))
+            } else if session.status == .stale || session.status == .offline {
+                row("Last seen", relativeString(session.lastActivityAt))
             } else {
                 row("Last active", relativeString(session.lastActivityAt))
             }
             row("Elapsed", AgentRow.shortDuration(session.elapsed))
-            if StaleDetector.isStale(session, now: now) {
-                row("Note", "Quiet for a while — may have stopped without telling Mochi.")
+            if session.status == .stale {
+                row("Note", "Quiet for a while — Mochi can no longer confirm this is still running.")
+            } else if session.status == .offline {
+                row("Note", "No activity for a long time — presumed to have stopped without telling Mochi.")
+            }
+            if let pid = session.pid {
+                row("Process", "PID \(pid) · \(StaleDetector.isProcessAlive(pid: pid) ? "running" : "not running")")
             }
             if let branch = session.branch { row("Branch", branch) }
             if let sessionId = session.sessionId { row("Session", sessionId) }
@@ -131,6 +147,18 @@ struct AgentDetailView: View {
 
     private func relativeString(_ date: Date) -> String {
         date.formatted(.relative(presentation: .named))
+    }
+
+    private var sourceLabel: String {
+        switch session.source {
+        case .openClaw: return "OpenClaw"
+        case .claudeCode: return "Claude Code"
+        case .codex: return "Codex"
+        case .genericCLI: return "mochi CLI"
+        case .demo: return "Demo (mochi demo)"
+        case .passiveDiscovery: return "Process detection"
+        case .unknown: return "Unknown (predates source tracking)"
+        }
     }
 }
 

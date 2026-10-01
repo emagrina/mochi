@@ -51,9 +51,10 @@ Sources/
   mochi/             The CLI. Depends on MochiCore + swift-argument-parser. Each subcommand
                      is its own file under Commands/.
 
-Tests/MochiCoreTests/  Tests covering the protocol, reducer, stale detection, persistence,
-                        agent identity, and — deliberately — concurrency (many simultaneous
-                        writers).
+Tests/MochiCoreTests/  Tests covering the protocol, reducer, persistence, agent identity,
+                        session lifecycle (stale/offline reconciliation, demo expiry and
+                        cleanup, backward-compatible decoding of pre-this-feature data), and
+                        — deliberately — concurrency (many simultaneous writers).
 
 Resources/
   DesignSources/       The two source illustrations everything visual is generated from —
@@ -161,15 +162,55 @@ right before the notification is sent and reset on the next genuinely new occurr
 notification per condition" (product spec section 37) rather than "one notification per status
 event," which would still spam on every poll cycle for a long-attention-needed session.
 
-## Stale detection
+## Session source and lifecycle
 
-`StaleDetector` never rewrites a session's status based on silence — that would be claiming
-certainty Mochi doesn't have. Instead `isStale(session)` is a computed signal the UI overlays
-("Last seen 27m ago") on top of whatever the last real status was, and `isProcessAlive(pid:)`
-is an additional, separate piece of evidence when a PID is known. Detected-only sessions (pure
-process observation, no protocol events) use a much shorter window — they disappear from the
-list ~90 seconds after the process stops showing up, since for those, "we stopped seeing it" is
-strong evidence, not just an inference.
+A real incident shaped both of these: `mochi demo` sessions from earlier development testing
+were still showing up — as "Working" — in a normal `open Mochi.app` launch, indistinguishable
+from real sessions except by reading project names ("Huginn," "Serafín") that a real project
+could just as legitimately use. Two separate fixes, both in `MochiCore/Domain` and
+`MochiCore/StateEngine`, not the UI layer:
+
+**`SessionSource`** (`openclaw`/`claudeCode`/`codex`/`genericCLI`/`demo`/`passiveDiscovery`/
+`unknown`) is a field on every session, carried on the wire as `MochiEvent.source`, set once by
+`SessionReducer` from whichever event creates the session and never overwritten after (only
+ever upgraded away from `.unknown`). `mochi demo` tags every event it writes with `.demo`
+unconditionally — there's no flag that lets a demo session claim otherwise — which is what
+makes classification structural instead of name-based. `mochi demo --cleanup` and automatic
+expiry both key off this field exclusively.
+
+**`StaleDetector.reconcileLifecycle`** replaced what used to be a purely cosmetic `isStale`
+query (the UI would overlay "Last seen 27m ago" as display text while the status badge
+underneath still said "Working," which is exactly how the incident above went unnoticed — a
+persisted "working" status survived app restarts with nothing to ever change it). It now
+actively mutates `status`: demo sessions past a short retention window are removed outright;
+active-looking sessions quiet past `staleThreshold` (20 min) become `.stale`; any non-terminal
+session quiet past `offlineThreshold` (90 min) becomes `.offline`. `done`/`error` sessions are
+never touched. This runs in three places — synchronously in `AppModel.init()` right after
+loading the persisted snapshot (so a freshly-launched Mochi never even flashes a stale
+"Working" before correcting itself), on `AppModel`'s existing 30-second tick thereafter, and
+inside `SessionProjection.replayAll` so `mochi list`/`inspect`/`doctor` are truthful standalone,
+without the app running to do it for them.
+
+Both transitions are fully reversible — a fresh event for the same session id overrides
+`.stale`/`.offline` exactly like any other status change, through the ordinary `SessionReducer`
+path, which doesn't know or care what a session's status was a moment ago.
+
+`isProcessAlive(pid:)` remains a separate, additional piece of evidence when a PID happens to
+be known (surfaced in the agent detail view), not a replacement for the above. Detected-only
+sessions (pure process observation, no protocol events — see `ProcessDiscoveryAdapter`) use
+their own, much shorter, separate pruning window (`AppModel.pruneDetectedGhosts`, ~90 seconds)
+rather than this general mechanism, since for those, "we stopped seeing it" is itself strong,
+immediate evidence.
+
+**OpenClaw gets one more, faster signal** than the generic timeout: `OpenClawAdapter` is an
+`actor` specifically so it can remember what it saw on the *previous* poll
+(`previouslyActiveStatuses`). If a session it previously reported as active simply disappears
+from a fresh `sessions list --active` result, it reports `.stale` immediately — real,
+positive evidence of disappearance from OpenClaw's own active list, not a guess, and far
+faster than waiting out the 20-minute generic fallback. It reports `.stale`, not `.offline`,
+because disappearing from that list doesn't distinguish "finished cleanly and aged out of
+OpenClaw's own window" from "crashed" — exactly the honest uncertainty `.stale` exists to
+represent.
 
 ## Terminal integration (Ghostty)
 

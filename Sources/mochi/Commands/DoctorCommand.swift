@@ -48,14 +48,34 @@ struct DoctorCommand: AsyncParsableCommand {
                 : "no state snapshot yet — app has never run, or hasn't ingested an event yet"
         ))
 
+        // SessionProjection.replayAll already reconciles lifecycle (stale/offline transitions,
+        // demo expiry) the same way the live app does, so what's reported here is the
+        // truthful, current state — not just whatever a stale persisted "working" said.
         let projection = SessionProjection.replayAll(paths: paths)
         checks.append(Check(name: "Recorded events", ok: true, detail: "\(projection.sessions.count) session(s) known; \(projection.malformedCount) malformed"))
 
-        let staleCount = projection.sessions.values.filter { StaleDetector.isStale($0) }.count
+        var bySource: [SessionSource: Int] = [:]
+        var staleCount = 0, offlineCount = 0
+        for session in projection.sessions.values {
+            bySource[session.source, default: 0] += 1
+            if session.status == .stale { staleCount += 1 }
+            if session.status == .offline { offlineCount += 1 }
+        }
+        let sourceBreakdown = bySource
+            .sorted { $0.key.rawValue < $1.key.rawValue }
+            .map { "\($0.key.rawValue)=\($0.value)" }
+            .joined(separator: ", ")
+        checks.append(Check(name: "Sessions by source", ok: true, detail: sourceBreakdown.isEmpty ? "none" : sourceBreakdown))
+
         checks.append(Check(
             name: "Stale sessions",
             ok: staleCount == 0,
-            detail: staleCount == 0 ? "none" : "\(staleCount) session(s) quiet for over \(Int(StaleDetector.staleThreshold / 60)) minutes"
+            detail: staleCount == 0 ? "none" : "\(staleCount) session(s) quiet for over \(Int(StaleDetector.staleThreshold / 60)) minutes — no longer confirmed active"
+        ))
+        checks.append(Check(
+            name: "Offline sessions",
+            ok: true,
+            detail: offlineCount == 0 ? "none" : "\(offlineCount) session(s) presumed stopped after \(Int(StaleDetector.offlineThreshold / 60)) minutes of silence"
         ))
 
         let openClawStatus = await OpenClawAdapter().currentStatus()

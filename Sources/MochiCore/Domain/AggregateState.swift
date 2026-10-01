@@ -42,7 +42,7 @@ public struct AggregateState: Hashable, Sendable {
             case .needsPermission: needsAttention += 1
             case .error: errors += 1
             case .done: done += 1
-            case .idle, .paused, .offline, .custom: idle += 1
+            case .idle, .paused, .offline, .stale, .custom: idle += 1
             }
         }
         self.init(
