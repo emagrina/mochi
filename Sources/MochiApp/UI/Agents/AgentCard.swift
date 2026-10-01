@@ -11,9 +11,13 @@ struct AgentCard: View {
     let reducedMotion: Bool
     var isHovered: Bool = false
 
+    static let cardHeight: CGFloat = 82
+    static let cardSpacing: CGFloat = 12
+    static let cornerRadius: CGFloat = 26
+
     var body: some View {
         HStack(spacing: 12) {
-            MochiAvatar(status: session.status, identityKey: session.agentIdentity.key, size: 50, reducedMotion: reducedMotion)
+            MochiAvatar(status: session.status, identityKey: session.agentIdentity.key, size: 52, reducedMotion: reducedMotion)
 
             VStack(alignment: .leading, spacing: 3) {
                 // The agent's own identity is the strongest text in the card — who is doing
@@ -22,13 +26,10 @@ struct AgentCard: View {
                 HStack(spacing: 4) {
                     // The name is the PRIMARY identity (never the provider — see
                     // AgentIdentity.title) and must never be what gives way on a tight
-                    // row — a longer name like "Chief of Staff" plus a text badge
-                    // ("· demo") was previously enough to truncate the name itself, which
-                    // is exactly the information this card most needs to stay legible.
-                    // Small fixed-width icons, not variable-width text, solve that: they
-                    // cost the same sliver of space regardless of how long the name is.
+                    // row — a fixed-width icon badge, not variable-width text, is what keeps
+                    // a longer name like "Chief of Staff" from being what truncates.
                     Text(session.displayName)
-                        .font(.system(size: 14.5, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .lineLimit(1)
                         .layoutPriority(1)
                     if session.discovery == .detected {
@@ -38,33 +39,26 @@ struct AgentCard: View {
                             .help("Detected — no activity information available")
                             .accessibilityLabel("detected")
                     }
-                    if session.source == .demo {
-                        Image(systemName: "flask.fill")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(MochiColors.attention)
-                            .help("Demo session — not real")
-                            .accessibilityLabel("demo session")
-                    }
                 }
                 if let context = contextLine {
                     Text(context)
-                        .font(.system(size: 12))
+                        .font(.system(size: 12.5))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 Text(subtitle)
-                    .font(.system(size: 12))
+                    .font(.system(size: 12.5))
                     .foregroundStyle(.secondary.opacity(0.85))
                     .lineLimit(1)
             }
 
             Spacer(minLength: 4)
 
-            VStack(alignment: .trailing, spacing: 6) {
+            VStack(alignment: .trailing, spacing: 7) {
                 StatusPill(status: session.status)
                 if session.discovery == .instrumented {
                     Text(elapsedText)
-                        .font(.system(size: 11))
+                        .font(.system(size: 11.5))
                         .foregroundStyle(.tertiary)
                         .monospacedDigit()
                 }
@@ -72,16 +66,15 @@ struct AgentCard: View {
 
             chevron
         }
-        .padding(14)
+        .padding(.horizontal, 16)
+        .frame(height: Self.cardHeight)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
                 .fill(MochiColors.cardSurface)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(MochiColors.cardBorder, lineWidth: 1)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .compositingGroup()
+        .shadow(color: MochiColors.cardShadow, radius: 8, y: 3)
+        .contentShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
     }
@@ -90,12 +83,16 @@ struct AgentCard: View {
         Image(systemName: "chevron.right")
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(.secondary)
-            .frame(width: 24, height: 24)
+            .frame(width: 26, height: 26)
             .background(Circle().fill(isHovered ? MochiColors.chipSurfaceHover : MochiColors.chipSurface))
     }
 
+    // Demo provenance is demoted to a plain suffix on the secondary line (e.g.
+    // "Huginn · Demo") rather than a bright badge beside the name — the name stays the
+    // strongest thing in the card, and "demo" is useful-but-quiet context, not a warning.
     private var contextLine: String? {
-        let parts = [session.agentIdentity.secondaryDescriptor, session.projectName].compactMap { $0 }
+        var parts = [session.agentIdentity.secondaryDescriptor, session.projectName].compactMap { $0 }
+        if session.source == .demo { parts.append("Demo") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 

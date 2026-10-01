@@ -46,11 +46,15 @@ struct MochiAppMain: App {
         // the status item, which isn't scriptable. Completely inert for every real user: the
         // scene only actually opens when MOCHI_PREVIEW is set in the environment (nothing
         // sets it); SwiftUI's SceneBuilder can't structurally omit a Scene behind a runtime
-        // `if`, so this is expressed as a launch-behavior toggle instead.
+        // `if`, so this is expressed as a launch-behavior toggle instead. Chrome (title bar,
+        // traffic lights) is stripped via `PreviewChromeHider` so a screenshot of this window
+        // can't be mistaken for the real popover's own chrome, which it never has.
         Window("Mochi Preview", id: "preview") {
             PopoverView()
                 .environment(appDelegate.model)
+                .background(PreviewChromeHider())
         }
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(previewRequested ? .presented : .suppressed)
 
@@ -65,5 +69,29 @@ struct MochiAppMain: App {
             SettingsView()
                 .environment(appDelegate.model)
         }
+    }
+}
+
+/// Dev-preview-only: hides the traffic-light buttons `.windowStyle(.hiddenTitleBar)` alone
+/// doesn't remove, so a screenshot of the preview window shows exactly what the real popover
+/// shows — nothing else uses this, and it never runs unless MOCHI_PREVIEW opened this window.
+private struct PreviewChromeHider: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async { [weak view] in configure(view?.window) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { [weak nsView] in configure(nsView?.window) }
+    }
+
+    private func configure(_ window: NSWindow?) {
+        guard let window else { return }
+        window.standardWindowButton(.closeButton)?.isHidden = true
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
     }
 }

@@ -21,16 +21,16 @@ struct AgentDetailView: View {
             }
             .padding(16)
         }
-        .frame(width: 400, height: 520)
+        .frame(width: 440, height: 540)
     }
 
     /// The same soft rounded surface `AgentCard` uses, reused here for visual consistency
-    /// with the popover's card language rather than a plain flat list.
+    /// with the popover's card language — material and shadow carry the separation, not a
+    /// stroke (see `MochiColors.cardSurface`).
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         content()
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(MochiColors.cardSurface))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(MochiColors.cardBorder, lineWidth: 1))
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(MochiColors.cardSurface))
     }
 
     private var header: some View {
@@ -42,7 +42,7 @@ struct AgentDetailView: View {
                     if session.source == .demo {
                         Text("· Demo")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(MochiColors.attention)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 let context = [session.agentIdentity.secondaryDescriptor, session.projectName].compactMap { $0 }.joined(separator: " · ")

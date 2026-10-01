@@ -63,19 +63,19 @@ public struct MochiAvatar: View {
         }
     }
 
+    // design-reference.png's small Mochis carry no status-colored ring at all — status is
+    // already fully conveyed by the face expression and the row's status pill, and repeating
+    // it a third time as a colored outline is exactly the "thick outline" look the reference
+    // explicitly avoids. The body is just the soft gradient fill plus one quiet highlight.
     @ViewBuilder
     private func body(for status: AgentStatus) -> some View {
-        RoundedRectangle(cornerRadius: size * 0.42, style: .continuous)
+        RoundedRectangle(cornerRadius: size * 0.46, style: .continuous)
             .fill(
                 LinearGradient(
                     colors: [MochiColors.body, MochiColors.body.opacity(0.92)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: size * 0.42, style: .continuous)
-                    .strokeBorder(statusTint.opacity(statusTint == .clear ? 0 : 0.55), lineWidth: max(1, size * 0.035))
             )
             .overlay(
                 // A faint top-left highlight sells the "soft rice cake" look without full
@@ -86,27 +86,21 @@ public struct MochiAvatar: View {
                     .offset(x: -size * 0.14, y: -size * 0.26)
                     .blendMode(.plusLighter)
             )
-            .shadow(color: MochiColors.bodyShadow, radius: size * 0.06, y: size * 0.03)
+            .shadow(color: MochiColors.bodyShadow, radius: size * 0.05, y: size * 0.025)
             .opacity(status == .offline ? 0.45 : 1)
     }
 
-    private var statusTint: Color {
-        switch status {
-        case .needsPermission: return MochiColors.attention
-        case .error: return MochiColors.errorTint
-        case .done: return MochiColors.successTint
-        default: return .clear
-        }
-    }
-
+    // The dot's one job is agent identity (see `MochiColors.identityColor(for:)`) — a flat
+    // circle sitting right on the body's edge, the way design-reference.png draws it, with no
+    // ring of its own competing for attention.
     @ViewBuilder
     private var identityDot: some View {
         if let identityKey {
             Circle()
                 .fill(MochiColors.identityColor(for: identityKey))
-                .frame(width: size * 0.17, height: size * 0.17)
-                .overlay(Circle().strokeBorder(MochiColors.body, lineWidth: size * 0.025))
-                .offset(x: size * 0.33, y: -size * 0.33)
+                .frame(width: size * 0.22, height: size * 0.22)
+                .shadow(color: .black.opacity(0.18), radius: size * 0.015, y: size * 0.008)
+                .offset(x: size * 0.32, y: -size * 0.32)
         }
     }
 
