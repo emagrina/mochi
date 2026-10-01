@@ -14,7 +14,10 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-14
+    # Must be at least Package.swift's platforms: [.macOS(.v15)] minimum deployment target —
+    # a test/app binary built with that target fails to even dlopen on an older host OS
+    # (missing newer Swift runtime libraries), independent of which Xcode built it.
+    runs-on: macos-15
     timeout-minutes: 60
     steps:
       - name: Checkout
