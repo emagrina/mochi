@@ -83,25 +83,54 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         panel.makeKeyAndOrderFront(nil)
     }
 
-    /// Anchored under the status item button, like a standard popover — but falls back to
-    /// the screen's top-right instead of silently doing nothing if the button's window can't
-    /// be resolved (which does happen transiently, and is this sandbox's permanent reality
-    /// since its menu bar isn't rendering any status items at all right now — see the repo's
-    /// notes on that environment limitation).
+    /// Anchored under the status item button — but, like Docker Desktop's menu bar panel
+    /// rather than a centered popover, opening with its LEFT edge near the icon so the panel
+    /// extends mostly to the icon's right. Falls back to the screen's top-right instead of
+    /// silently doing nothing if the button's window can't be resolved (which does happen
+    /// transiently, and is this sandbox's permanent reality since its menu bar isn't
+    /// rendering any status items at all right now — see the repo's notes on that environment
+    /// limitation).
     private func panelOrigin() -> CGPoint {
         guard let button = statusItem.button, let buttonWindow = button.window else {
             let screen = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
             return CGPoint(x: screen.maxX - panel.frame.width - 12, y: screen.maxY - panel.frame.height - 6)
         }
         let buttonFrameInScreen = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-        var origin = CGPoint(
-            x: buttonFrameInScreen.midX - panel.frame.width / 2,
-            y: buttonFrameInScreen.minY - panel.frame.height - 6
-        )
-        if let screen = buttonWindow.screen ?? NSScreen.main {
-            origin.x = min(max(origin.x, screen.visibleFrame.minX + 8), screen.visibleFrame.maxX - panel.frame.width - 8)
-        }
-        return origin
+        // The screen that actually contains the status item — never assume `.main` (the
+        // screen with the active window), which on a multi-monitor setup is frequently a
+        // different display than the one the menu bar icon lives on.
+        let visible = (buttonWindow.screen ?? NSScreen.main)?.visibleFrame
+            ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+        return Self.clampedPanelOrigin(iconFrame: buttonFrameInScreen, panelSize: panel.frame.size, visibleScreenFrame: visible)
+    }
+
+    /// The actual positioning math, pulled out as a pure function of its geometry so it's
+    /// exercisable without a real, clickable `NSStatusItem` (this sandbox doesn't have one —
+    /// see `panelOrigin()`'s doc comment) and so every input combination — icon near the left
+    /// edge, the right edge, a narrow display, a huge one — is just a `CGRect` to construct,
+    /// not a real screen to find.
+    ///
+    /// Like Docker Desktop's menu bar panel rather than a centered popover: prefers opening
+    /// with its LEFT edge at the icon's own left edge (so it reads as anchored to the icon,
+    /// extending rightward), clamped to the screen that actually contains the icon.
+    static func clampedPanelOrigin(
+        iconFrame: CGRect,
+        panelSize: CGSize,
+        visibleScreenFrame: CGRect,
+        margin: CGFloat = 8,
+        leadingOffset: CGFloat = 10,
+        gapBelowIcon: CGFloat = 6
+    ) -> CGPoint {
+        let y = iconFrame.minY - panelSize.height - gapBelowIcon
+        let preferredX = iconFrame.minX - leadingOffset
+        // Pull left first if the preferred position would run the right edge off screen...
+        var x = min(preferredX, visibleScreenFrame.maxX - panelSize.width - margin)
+        // ...then push right if THAT pulled the left edge off screen too (a narrow display,
+        // or an icon already near the screen's left edge) — the right-edge clamp always wins
+        // when both can't be satisfied, since staying on screen matters more than how far
+        // right the panel leans.
+        x = max(x, visibleScreenFrame.minX + margin)
+        return CGPoint(x: x, y: y)
     }
 
     private func closePanel() {
