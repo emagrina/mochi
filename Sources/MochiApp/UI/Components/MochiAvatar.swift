@@ -155,7 +155,7 @@ private struct MochiFace: View {
     @ViewBuilder
     private var eyes: some View {
         switch status {
-        case .idle, .offline, .paused:
+        case .idle, .offline, .paused, .stale:
             HStack(spacing: eyeGap) {
                 closedEye
                 closedEye
@@ -206,7 +206,7 @@ private struct MochiFace: View {
                 .frame(width: size * 0.2, height: size * 0.05)
         case .needsPermission:
             Ellipse().fill(MochiColors.face).frame(width: size * 0.09, height: size * 0.07)
-        case .idle, .offline, .paused:
+        case .idle, .offline, .paused, .stale:
             Capsule().fill(MochiColors.face).frame(width: size * 0.16, height: size * 0.025)
         default:
             Capsule().fill(MochiColors.face).frame(width: size * 0.1, height: size * 0.035)

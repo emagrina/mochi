@@ -25,7 +25,7 @@ case "$EVENT_NAME" in
     if [ ! -f "$STATE_FILE" ]; then
       touch "$STATE_FILE"
       mochi start --agent claude --id "$AGENT_ID" --project "$PROJECT_NAME" --path "$CWD" \
-        --task "Working in $PROJECT_NAME" >/dev/null 2>&1 || true
+        --task "Working in $PROJECT_NAME" --source claudeCode >/dev/null 2>&1 || true
     fi
     ;;
   PreToolUse)

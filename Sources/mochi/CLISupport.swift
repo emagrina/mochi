@@ -3,6 +3,7 @@ import MochiCore
 
 enum CLIError: Error, CustomStringConvertible {
     case invalidState(String)
+    case invalidSource(String)
     case sessionNotFound(String)
     case writeFailed(String)
 
@@ -10,6 +11,8 @@ enum CLIError: Error, CustomStringConvertible {
         switch self {
         case .invalidState(let value):
             return "Unknown state '\(value)'. Valid states: \(CLISupport.knownStates.joined(separator: ", "))"
+        case .invalidSource(let value):
+            return "Unknown source '\(value)'. Valid sources: \(CLISupport.knownSources.joined(separator: ", "))"
         case .sessionNotFound(let id):
             return "No session found with id '\(id)'"
         case .writeFailed(let reason):
@@ -19,9 +22,13 @@ enum CLIError: Error, CustomStringConvertible {
 }
 
 enum CLISupport {
+    // "stale"/"offline" are deliberately excluded: those are reconciliation's conclusions
+    // about silence, never something a caller has standing to assert about itself (an agent
+    // claiming "--state stale" would be fabricating the exact kind of certainty this field
+    // doesn't have — see StaleDetector.reconcileLifecycle).
     static let knownStates = [
         "idle", "starting", "working", "thinking", "testing",
-        "waiting", "needsPermission", "paused", "done", "error", "offline"
+        "waiting", "needsPermission", "paused", "done", "error"
     ]
 
     static func validate(state: String?) throws -> String? {
@@ -30,6 +37,20 @@ enum CLISupport {
             throw CLIError.invalidState(state)
         }
         return state
+    }
+
+    // "demo" is deliberately excluded here too: it's set unconditionally by `mochi demo`
+    // itself, never something a plain `mochi start` caller should be able to claim — a
+    // script that could mark itself "demo" could just as easily *not*, which defeats the
+    // point of demo data being structurally unable to pass as real.
+    static let knownSources = ["openclaw", "claudeCode", "codex", "genericCLI", "passiveDiscovery"]
+
+    static func validate(source: String?) throws -> String? {
+        guard let source else { return nil }
+        guard knownSources.contains(where: { $0.caseInsensitiveCompare(source) == .orderedSame }) else {
+            throw CLIError.invalidSource(source)
+        }
+        return source
     }
 
     /// `mochi start` generates a short, readable session id when `--id` isn't given, so

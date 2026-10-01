@@ -36,6 +36,11 @@ public enum SessionProjection {
                 malformed += 1
             }
         }
+        // Raw replay only knows what each event claimed at the time; a session can still be
+        // sitting on a "working" status from hours ago with nothing since. Reconciling here
+        // — not just in the live app — is what makes `mochi list`/`inspect`/`doctor` truthful
+        // even when run standalone, with Mochi.app not running to do it for them.
+        StaleDetector.reconcileLifecycle(&sessions, now: Date())
         return Result(sessions: sessions, malformedCount: malformed)
     }
 }

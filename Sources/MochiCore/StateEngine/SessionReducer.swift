@@ -23,6 +23,7 @@ public enum SessionReducer {
                 role: event.agentRole,
                 provider: AgentProvider(rawValue: event.provider ?? "generic")
             ),
+            source: event.source.map(SessionSource.init(rawValue:)) ?? .unknown,
             status: .starting,
             discovery: event.metadata?["mochi.discoveryKind"] == "detected" ? .detected : .instrumented,
             startedAt: event.timestamp,
@@ -34,6 +35,14 @@ public enum SessionReducer {
         // Fields that make sense to backfill once, the first time we see them, regardless
         // of event ordering (identity-ish information rather than "current state").
         if session.sessionId == nil { session.sessionId = event.sessionId }
+        // Source is set once at creation and otherwise only ever upgraded away from
+        // `.unknown` — never overwritten once a real source is known, since where a session
+        // came from doesn't change mid-session, and a later event claiming a different
+        // source almost always means two different things share an id by coincidence rather
+        // than one session legitimately changing provenance.
+        if session.source == .unknown, let rawSource = event.source {
+            session.source = SessionSource(rawValue: rawSource)
+        }
         if let provider = event.provider { session.agentIdentity.provider = AgentProvider(rawValue: provider) }
         // Identity fields are refreshed (not backfill-once) the same way `provider` is just
         // above: an adapter like OpenClaw's reports the agent's display name on every poll,

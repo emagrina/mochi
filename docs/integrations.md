@@ -40,6 +40,15 @@ Verified against OpenClaw 2026.9.7, installed locally.
   label, e.g. "Dashboard session"). A session's own `label` field (a real OpenClaw-assigned
   description — a short nickname for a sub-thread, or a fuller task string for a spawned
   subagent) becomes `task`.
+- **Disappearance detection**: `OpenClawAdapter` remembers which session keys it saw actively
+  working/waiting on the *previous* poll. If one of them is simply absent from a fresh
+  `sessions list --active` result, that's real evidence — not a guess — that OpenClaw no
+  longer considers it active, and the adapter reports it `stale` immediately rather than
+  waiting for Mochi's generic 20-minute silence timeout. This only ever moves a session to
+  `stale`, never `offline` — a session dropping out of the active window doesn't tell us
+  whether it finished cleanly or crashed, and `stale` ("no longer confirmed") is the honest
+  signal for that, not `offline` ("presumed gone"). See `docs/protocol.md`'s "Session
+  lifecycle" section.
 
 **What's not available:** OpenClaw exposes no fine-grained activity signal — no
 "thinking"/"testing" distinction. Mochi can only show working, done, or an OpenClaw-reported

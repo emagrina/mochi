@@ -25,6 +25,15 @@ struct AgentRow: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
+                    // Demo sessions are temporary by construction (see
+                    // StaleDetector.demoRetention) but still visible for a couple of minutes
+                    // after a `mochi demo` run — this is what makes it structurally
+                    // impossible to mistake one for a real agent in that window.
+                    if session.source == .demo {
+                        Text("· demo")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(MochiColors.attention)
+                    }
                 }
                 // Secondary: role/provider and project/session-context — e.g. "Developer ·
                 // Aenari" or "OpenClaw · Dashboard session". This is what lets two rows for
@@ -77,8 +86,10 @@ struct AgentRow: View {
     }
 
     private var elapsedText: String {
-        let isStale = StaleDetector.isStale(session, now: now)
-        if isStale {
+        // `.stale`/`.offline` are reconciled status values, not a display-only heuristic —
+        // see `StaleDetector.reconcileLifecycle`. "Last seen" vs. an elapsed duration is the
+        // whole point: they mean different things and must never look alike.
+        if session.status == .stale || session.status == .offline {
             return "Last seen \(Self.shortDuration(now.timeIntervalSince(session.lastActivityAt))) ago"
         }
         // "2m ago" (time since it finished) rather than "14m" (how long the task took) — a
@@ -92,6 +103,7 @@ struct AgentRow: View {
 
     private var accessibilityLabel: String {
         var parts = [session.displayName]
+        if session.source == .demo { parts.append("demo session") }
         if let context = contextLine { parts.append(context) }
         parts.append(contentsOf: [session.status.friendlyLabel, subtitle, elapsedText])
         return parts.joined(separator: ", ")
@@ -132,6 +144,7 @@ struct StatusBadge: View {
         case .paused: return "pause.fill"
         case .done: return "checkmark.circle.fill"
         case .error: return "xmark.octagon.fill"
+        case .stale: return "wifi.slash"
         case .offline: return "power"
         case .custom: return "questionmark.circle.fill"
         }

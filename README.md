@@ -35,7 +35,7 @@ Requires macOS 15+ and a full Xcode installation (not just Command Line Tools �
 git clone <this repo>
 cd mochi
 swift build                 # builds MochiCore, the CLI, and the app library
-swift test                  # 57 tests — protocol parsing, state transitions, concurrency, ...
+swift test                  # 83 tests — protocol parsing, state transitions, lifecycle, ...
 ./Scripts/build-app.sh       # assembles .build/Mochi.app (icon, Info.plist, ad-hoc codesign)
 open .build/Mochi.app
 ```
@@ -57,8 +57,12 @@ This runs six scripted agents through realistic state transitions (thinking → 
 testing → done, one hitting an error, one requesting permission) over about 25 seconds,
 including two sessions sharing one agent identity ("Chief of Staff," running and done at the
 same time) to show how that's distinguished in the UI. Watch the menu bar and popover update
-live. `mochi demo --agents 8 --step-delay 1` for a faster/bigger
-run.
+live. `mochi demo --agents 8 --step-delay 1` for a faster/bigger run.
+
+Demo sessions are tagged with their own source (never confusable with a real session — see
+"Session lifecycle," below) and disappear on their own a couple of minutes after the demo
+finishes. To remove them immediately instead of waiting: `mochi demo --cleanup` — it only ever
+touches demo data, identified by that tag, never by project or agent name.
 
 ## Using the CLI for real
 
@@ -94,6 +98,25 @@ task, and history. Omit both and a session is its own standalone agent, same as 
 design rationale, including a real bug this caught (OpenClaw's provider name was being shown
 instead of the agent's identity), is in `docs/protocol.md#agent-identity-vs-session-identity`
 and `docs/integrations.md`.
+
+## Session lifecycle
+
+**"Working" always means currently working** — a persisted status is historical evidence, not
+proof of current liveness. A quiet session moves from its last active status to `Stale` (20
+minutes of silence — "no longer confirmed," not "known to have stopped") and on to `Offline`
+(90 minutes — presumed gone), both reversible the instant a fresh event arrives. This
+reconciliation runs before Mochi ever shows you a session, including right after a cold launch
+and standalone via `mochi list`/`doctor`, not only while the app is already running. OpenClaw
+sessions get one extra, faster signal: Mochi notices immediately if a session it was tracking
+simply disappears from OpenClaw's own active list, rather than waiting out the 20-minute
+timeout.
+
+Every session also carries an explicit, typed **source** (OpenClaw, Claude Code, Codex, the
+generic CLI, process detection, or demo) — this is what makes demo data structurally
+impossible to confuse with a real session, and it's visible in the agent detail view and
+`mochi inspect`/`doctor`. This exists because of a real incident caught while building Mochi:
+see `docs/protocol.md`'s "Session source" and "Session lifecycle" sections for the full story
+and the exact rules.
 
 ## Integrations
 
@@ -156,13 +179,17 @@ malformed/quarantined events, stale sessions, and whether `openclaw` is on `PATH
 swift test
 ```
 
-57 tests across 10 suites: protocol encode/decode (including malformed JSON, unknown future
+83 tests across 14 suites: protocol encode/decode (including malformed JSON, unknown future
 status values, legacy timestamp formats), the state reducer (out-of-order delivery, duplicate
 events, multiple simultaneous sessions, history capping), agent identity (the fallback chain,
-and two sessions sharing an `agentKey` resolving to the same recognizable agent), stale-session
-detection (including a real spawned-and-exited process, not a mock), settings/session
-persistence round-trips (including forward/backward-compatible decoding), and concurrency (60
-simultaneous event writers, 30 simultaneous writers to one shared file) — all passing.
+and two sessions sharing an `agentKey` resolving to the same recognizable agent), session
+lifecycle reconciliation (stale/offline transitions, demo expiry that never touches a real
+session, terminal states that are never rewritten, a real spawned-and-exited process checked
+for liveness, not a mock), demo cleanup (removes only demo-sourced data, verified against a
+mix of demo and real sessions), backward-compatible decoding (a session persisted before
+`source`/`agentIdentity` existed loads safely, and doesn't poison the rest of the snapshot
+array), settings/session persistence round-trips, and concurrency (60 simultaneous event
+writers, 30 simultaneous writers to one shared file) — all passing.
 
 ## What's not done
 

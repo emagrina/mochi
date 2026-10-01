@@ -18,7 +18,7 @@ PROJECT_NAME="$1"; shift
 TASK="$1"; shift
 if [ "${1:-}" = "--" ]; then shift; fi
 
-ID=$(mochi start --agent claude --project "$PROJECT_NAME" --path "$(pwd)" --task "$TASK")
+ID=$(mochi start --agent claude --project "$PROJECT_NAME" --path "$(pwd)" --task "$TASK" --source claudeCode)
 mochi status --id "$ID" --state working --message "Running claude" >/dev/null 2>&1 || true
 
 if claude "$@"; then

@@ -38,6 +38,13 @@ public struct MochiEvent: Codable, Sendable, Hashable {
     public var agentDisplayName: String?
     /// A role/persona descriptor, when distinct from `agentDisplayName`.
     public var agentRole: String?
+    /// WHERE this event came from — see `SessionSource`. Optional for backward compatibility
+    /// (events written before this field existed decode fine without it, folding to
+    /// `.unknown`), but every first-party writer in this codebase (the CLI, each
+    /// integration adapter, `mochi demo`) sets it explicitly. This is what makes demo data
+    /// structurally distinguishable from real sessions instead of relying on naming
+    /// conventions — see `docs/protocol.md`.
+    public var source: String?
     public var sessionId: String?
     public var project: String?
     public var projectPath: String?
@@ -62,6 +69,7 @@ public struct MochiEvent: Codable, Sendable, Hashable {
         agentKey: String? = nil,
         agentDisplayName: String? = nil,
         agentRole: String? = nil,
+        source: String? = nil,
         sessionId: String? = nil,
         project: String? = nil,
         projectPath: String? = nil,
@@ -85,6 +93,7 @@ public struct MochiEvent: Codable, Sendable, Hashable {
         self.agentKey = agentKey
         self.agentDisplayName = agentDisplayName
         self.agentRole = agentRole
+        self.source = source
         self.sessionId = sessionId
         self.project = project
         self.projectPath = projectPath

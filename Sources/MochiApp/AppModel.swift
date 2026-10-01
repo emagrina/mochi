@@ -37,6 +37,14 @@ public final class AppModel {
 
         let snapshot = persistence.loadSessionSnapshot()
         for session in snapshot { sessions[session.id] = session }
+
+        // Reconcile BEFORE the first render, synchronously — not on the next 30-second tick.
+        // A persisted "working" session is historical evidence, not proof of current
+        // liveness (a `mochi demo` run from hours ago, or a real agent that crashed without
+        // a completion event, would otherwise flash as "Working" the instant Mochi opens).
+        // This is also what makes `mochi demo`'s leftover sessions age out of a normal
+        // launch on their own — see StaleDetector.reconcileLifecycle.
+        StaleDetector.reconcileLifecycle(&sessions, now: Date())
     }
 
     public func start() {
@@ -70,17 +78,24 @@ public final class AppModel {
     }
 
     /// Sessions worth showing right now: finished ones age out after
-    /// `settings.keepCompletedVisibleMinutes`, and pure process-detection entries disappear
-    /// shortly after the process does (their only evidence is "we polled and it was there").
+    /// `settings.keepCompletedVisibleMinutes`, pure process-detection entries disappear
+    /// shortly after the process does (their only evidence is "we polled and it was there"),
+    /// and presumed-dead sessions age out on the same clock as finished ones — the popover is
+    /// "what are my agents doing right now" (product spec section 10), not a permanent log,
+    /// so a session from yesterday that silently died has no more business sitting among
+    /// today's active ones than a long-finished one does.
     public var visibleSessions: [AgentSession] {
-        let keepDoneUntil = TimeInterval(settings.keepCompletedVisibleMinutes * 60)
+        let keepUntil = TimeInterval(settings.keepCompletedVisibleMinutes * 60)
         return sessions.values
             .filter { session in
                 if session.discovery == .detected {
                     return now.timeIntervalSince(session.lastActivityAt) < 90
                 }
                 if session.status == .done, let finishedAt = session.finishedAt {
-                    return now.timeIntervalSince(finishedAt) < keepDoneUntil
+                    return now.timeIntervalSince(finishedAt) < keepUntil
+                }
+                if session.status == .offline {
+                    return now.timeIntervalSince(session.lastActivityAt) < keepUntil
                 }
                 return true
             }
@@ -126,8 +141,10 @@ public final class AppModel {
         }
     }
 
-    /// One tick per second drives elapsed-time display; every 30th tick also sweeps for
-    /// sessions that have gone quiet long enough to flag as stale (product spec section 24).
+    /// One tick per second drives elapsed-time display; every 30th tick also reconciles
+    /// lifecycle state — sessions gone quiet long enough become `.stale`/`.offline`, expired
+    /// demo sessions are removed outright, and detected-only processes that vanished are
+    /// pruned (product spec section 24; see `StaleDetector.reconcileLifecycle`).
     private func tick() async {
         var counter = 0
         while !Task.isCancelled {
@@ -135,6 +152,7 @@ public final class AppModel {
             now = Date()
             counter += 1
             if counter % 30 == 0 {
+                StaleDetector.reconcileLifecycle(&sessions, now: now)
                 pruneDetectedGhosts()
             }
         }
