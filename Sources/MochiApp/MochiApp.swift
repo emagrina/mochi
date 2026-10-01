@@ -14,6 +14,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Menu-bar-only: no Dock icon, no Cmd-Tab entry, no app menu.
         NSApplication.shared.setActivationPolicy(.accessory)
         model.start()
+        if ProcessInfo.processInfo.environment["MOCHI_PREVIEW"] != nil {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -25,6 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct MochiAppMain: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
 
+    private var previewRequested: Bool {
+        ProcessInfo.processInfo.environment["MOCHI_PREVIEW"] != nil
+    }
+
     var body: some Scene {
         MenuBarExtra {
             PopoverView()
@@ -33,6 +40,19 @@ struct MochiAppMain: App {
             MenuBarLabel(aggregate: appDelegate.model.aggregate, showCount: appDelegate.model.settings.showCountInMenuBar)
         }
         .menuBarExtraStyle(.window)
+
+        // Lets the popover be rendered in a normal, screenshot-able window for visual
+        // development/QA — a MenuBarExtra's own popover can only be opened by a real click on
+        // the status item, which isn't scriptable. Completely inert for every real user: the
+        // scene only actually opens when MOCHI_PREVIEW is set in the environment (nothing
+        // sets it); SwiftUI's SceneBuilder can't structurally omit a Scene behind a runtime
+        // `if`, so this is expressed as a launch-behavior toggle instead.
+        Window("Mochi Preview", id: "preview") {
+            PopoverView()
+                .environment(appDelegate.model)
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(previewRequested ? .presented : .suppressed)
 
         Window("Welcome to Mochi", id: "onboarding") {
             OnboardingView()

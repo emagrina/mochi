@@ -1,44 +1,51 @@
 import SwiftUI
 import MochiCore
 
-/// One line in the popover list. Deliberately plain — spacing and typography carry the
-/// hierarchy instead of a bordered card (product spec section 43).
-struct AgentRow: View {
+/// One agent, as its own soft rounded card — reference.png's card language, implemented
+/// natively (a filled `RoundedRectangle` surface sitting on the popover's own
+/// `.regularMaterial` background, not a web-style box-shadow card). Replaces the earlier flat
+/// `AgentRow`.
+struct AgentCard: View {
     let session: AgentSession
     let now: Date
     let reducedMotion: Bool
+    var isHovered: Bool = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            MochiAvatar(status: session.status, provider: session.provider, size: 32, reducedMotion: reducedMotion)
+        HStack(spacing: 12) {
+            MochiAvatar(status: session.status, identityKey: session.agentIdentity.key, size: 50, reducedMotion: reducedMotion)
 
-            VStack(alignment: .leading, spacing: 2) {
-                // The agent's own identity is the strongest text in the row — who is doing
+            VStack(alignment: .leading, spacing: 3) {
+                // The agent's own identity is the strongest text in the card — who is doing
                 // the work, not which runtime happens to be running it. See
                 // AgentIdentity.title and docs/architecture.md's "Agent vs. session identity."
                 HStack(spacing: 4) {
+                    // The name is the PRIMARY identity (never the provider — see
+                    // AgentIdentity.title) and must never be what gives way on a tight
+                    // row — a longer name like "Chief of Staff" plus a text badge
+                    // ("· demo") was previously enough to truncate the name itself, which
+                    // is exactly the information this card most needs to stay legible.
+                    // Small fixed-width icons, not variable-width text, solve that: they
+                    // cost the same sliver of space regardless of how long the name is.
                     Text(session.displayName)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 14.5, weight: .semibold))
                         .lineLimit(1)
+                        .layoutPriority(1)
                     if session.discovery == .detected {
-                        Text("· detected")
-                            .font(.system(size: 11))
+                        Image(systemName: "eye")
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.secondary)
+                            .help("Detected — no activity information available")
+                            .accessibilityLabel("detected")
                     }
-                    // Demo sessions are temporary by construction (see
-                    // StaleDetector.demoRetention) but still visible for a couple of minutes
-                    // after a `mochi demo` run — this is what makes it structurally
-                    // impossible to mistake one for a real agent in that window.
                     if session.source == .demo {
-                        Text("· demo")
-                            .font(.system(size: 11, weight: .medium))
+                        Image(systemName: "flask.fill")
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(MochiColors.attention)
+                            .help("Demo session — not real")
+                            .accessibilityLabel("demo session")
                     }
                 }
-                // Secondary: role/provider and project/session-context — e.g. "Developer ·
-                // Aenari" or "OpenClaw · Dashboard session". This is what lets two rows for
-                // the same agent (two sessions) read as distinguishable rather than as an
-                // ambiguous duplicate.
                 if let context = contextLine {
                     Text(context)
                         .font(.system(size: 12))
@@ -47,14 +54,14 @@ struct AgentRow: View {
                 }
                 Text(subtitle)
                     .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.secondary.opacity(0.85))
                     .lineLimit(1)
             }
 
             Spacer(minLength: 4)
 
-            VStack(alignment: .trailing, spacing: 2) {
-                StatusBadge(status: session.status)
+            VStack(alignment: .trailing, spacing: 6) {
+                StatusPill(status: session.status)
                 if session.discovery == .instrumented {
                     Text(elapsedText)
                         .font(.system(size: 11))
@@ -62,11 +69,29 @@ struct AgentRow: View {
                         .monospacedDigit()
                 }
             }
+
+            chevron
         }
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(MochiColors.cardSurface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(MochiColors.cardBorder, lineWidth: 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 24, height: 24)
+            .background(Circle().fill(isHovered ? MochiColors.chipSurfaceHover : MochiColors.chipSurface))
     }
 
     private var contextLine: String? {
@@ -115,47 +140,5 @@ struct AgentRow: View {
         if hours > 0 { return "\(hours)h\(minutes)m" }
         if minutes > 0 { return "\(minutes)m" }
         return "\(seconds)s"
-    }
-}
-
-/// A small pill that pairs an icon (never color alone) with the friendly status label.
-struct StatusBadge: View {
-    let status: AgentStatus
-
-    var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: symbolName)
-                .font(.system(size: 9, weight: .bold))
-            Text(status.friendlyLabel)
-                .font(.system(size: 11, weight: .medium))
-        }
-        .foregroundStyle(tint)
-    }
-
-    private var symbolName: String {
-        switch status {
-        case .idle: return "moon.zzz.fill"
-        case .starting: return "sparkles"
-        case .working: return "hammer.fill"
-        case .thinking: return "ellipsis.bubble.fill"
-        case .testing: return "checkmark.seal.fill"
-        case .waiting: return "hourglass"
-        case .needsPermission: return "exclamationmark.triangle.fill"
-        case .paused: return "pause.fill"
-        case .done: return "checkmark.circle.fill"
-        case .error: return "xmark.octagon.fill"
-        case .stale: return "wifi.slash"
-        case .offline: return "power"
-        case .custom: return "questionmark.circle.fill"
-        }
-    }
-
-    private var tint: Color {
-        switch status {
-        case .needsPermission: return MochiColors.attention
-        case .error: return MochiColors.errorTint
-        case .done: return MochiColors.successTint
-        default: return .secondary
-        }
     }
 }

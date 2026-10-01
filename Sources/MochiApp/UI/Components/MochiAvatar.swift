@@ -3,11 +3,15 @@ import MochiCore
 
 /// The character at the center of Mochi's identity: a soft rounded body with a tiny face
 /// whose expression encodes `AgentStatus`. Fully vector/programmatic (no bitmap assets) so
-/// it stays crisp from menu-bar size up to the detail view, and provider accessories are
-/// simple colored shapes rather than any third-party logo (product spec section 4).
+/// it stays crisp from menu-bar size up to the detail view, and the shoulder dot is a plain
+/// colored circle rather than any third-party logo (product spec section 4).
 public struct MochiAvatar: View {
     public let status: AgentStatus
-    public let provider: AgentProvider
+    /// Drives the shoulder dot's color — see `MochiColors.identityColor(for:)` for exactly
+    /// what it means (an agent's identity, not its provider or status) and why. `nil` omits
+    /// the dot entirely, for decorative/generic uses (empty state, onboarding) that aren't
+    /// representing one specific agent.
+    public let identityKey: String?
     public let size: CGFloat
     public let reducedMotion: Bool
 
@@ -15,9 +19,9 @@ public struct MochiAvatar: View {
     @State private var bounce = false
     @State private var shakeTrigger = 0
 
-    public init(status: AgentStatus, provider: AgentProvider, size: CGFloat = 32, reducedMotion: Bool = false) {
+    public init(status: AgentStatus, identityKey: String? = nil, size: CGFloat = 32, reducedMotion: Bool = false) {
         self.status = status
-        self.provider = provider
+        self.identityKey = identityKey
         self.size = size
         self.reducedMotion = reducedMotion
     }
@@ -26,7 +30,7 @@ public struct MochiAvatar: View {
         ZStack {
             body(for: status)
             MochiFace(status: status, size: size)
-            accessory
+            identityDot
         }
         .frame(width: size, height: size)
         .scaleEffect(breatheScale * (bounce ? 1.12 : 1))
@@ -96,25 +100,13 @@ public struct MochiAvatar: View {
     }
 
     @ViewBuilder
-    private var accessory: some View {
-        switch provider {
-        case .claude:
+    private var identityDot: some View {
+        if let identityKey {
             Circle()
-                .fill(MochiColors.claudeAccent)
-                .frame(width: size * 0.16, height: size * 0.16)
-                .offset(x: size * 0.3, y: -size * 0.34)
-        case .codex:
-            RoundedRectangle(cornerRadius: size * 0.04, style: .continuous)
-                .fill(MochiColors.codexAccent)
+                .fill(MochiColors.identityColor(for: identityKey))
                 .frame(width: size * 0.17, height: size * 0.17)
-                .offset(x: size * 0.3, y: -size * 0.34)
-        case .openclaw:
-            Circle()
-                .fill(MochiColors.openClawAccent)
-                .frame(width: size * 0.16, height: size * 0.16)
-                .offset(x: size * 0.3, y: -size * 0.34)
-        case .generic:
-            EmptyView()
+                .overlay(Circle().strokeBorder(MochiColors.body, lineWidth: size * 0.025))
+                .offset(x: size * 0.33, y: -size * 0.33)
         }
     }
 
@@ -133,24 +125,48 @@ public struct MochiAvatar: View {
     }
 }
 
-/// Eyes + mouth, drawn as plain shapes sized relative to the body so the face reads clearly
-/// even at 16x16 menu bar scale. Each `AgentStatus` gets a genuinely different shape, not
-/// just a different color, per the accessibility note in the product spec (don't rely on
+/// Eyes + mouth + blush, drawn as plain shapes sized relative to the body so the face reads
+/// clearly even at 16x16 menu bar scale. Each `AgentStatus` gets a genuinely different shape,
+/// not just a different color, per the accessibility note in the product spec (don't rely on
 /// color alone).
 private struct MochiFace: View {
     let status: AgentStatus
     let size: CGFloat
 
     var body: some View {
-        VStack(spacing: size * 0.06) {
-            eyes
-            mouth
+        ZStack {
+            blush
+            VStack(spacing: size * 0.06) {
+                eyes
+                mouth
+            }
+            .offset(y: size * 0.04)
         }
-        .offset(y: size * 0.04)
     }
 
     private var eyeSize: CGFloat { size * 0.12 }
     private var eyeGap: CGFloat { size * 0.16 }
+
+    /// The warm cheek blush reads as "content/alive" — present on most expressions, left off
+    /// the ones where that would undercut the state being communicated (a distressed or
+    /// presumed-gone Mochi shouldn't also look rosy-cheeked).
+    private var showsBlush: Bool {
+        switch status {
+        case .error, .offline, .stale: return false
+        default: return true
+        }
+    }
+
+    @ViewBuilder
+    private var blush: some View {
+        if showsBlush {
+            HStack(spacing: eyeGap * 2.05) {
+                Ellipse().fill(MochiColors.blush).frame(width: eyeSize * 1.3, height: eyeSize * 0.85)
+                Ellipse().fill(MochiColors.blush).frame(width: eyeSize * 1.3, height: eyeSize * 0.85)
+            }
+            .offset(y: size * 0.14)
+        }
+    }
 
     @ViewBuilder
     private var eyes: some View {
