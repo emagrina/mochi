@@ -15,6 +15,17 @@ else
     SWIFT_CONFIG_FLAG=""
 fi
 
+# Visual assets are generated from Resources/DesignSources/*.png BEFORE the build, not after:
+# the menu bar template (Sources/MochiApp/Resources/MochiMenuBarTemplate.png) is a SwiftPM
+# resource that gets compiled INTO the executable's resource bundle, so it must exist on disk
+# before `swift build` runs — unlike AppIcon.icns, which is copied into the .app bundle
+# separately afterward and never touches SwiftPM's resource pipeline at all.
+if [ ! -f "$ROOT_DIR/Resources/AppIcon.icns" ] || [ ! -f "$ROOT_DIR/Sources/MochiApp/Resources/MochiMenuBarTemplate.png" ]; then
+    echo "==> Generating visual assets from Resources/DesignSources/"
+    swift "$ROOT_DIR/Scripts/generate-assets.swift"
+    iconutil -c icns "$ROOT_DIR/Resources/AppIcon.iconset" -o "$ROOT_DIR/Resources/AppIcon.icns"
+fi
+
 echo "==> Building MochiApp ($CONFIG)"
 # shellcheck disable=SC2086
 swift build --target MochiApp $SWIFT_CONFIG_FLAG
@@ -27,16 +38,11 @@ rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 
 cp "$BIN_PATH/MochiApp" "$APP_DIR/Contents/MacOS/Mochi"
-
-if [ ! -f "$ROOT_DIR/Resources/AppIcon.icns" ]; then
-    echo "==> Generating app icon"
-    swift "$ROOT_DIR/Scripts/generate-app-icon.swift"
-    iconutil -c icns "$ROOT_DIR/Resources/AppIcon.iconset" -o "$ROOT_DIR/Resources/AppIcon.icns"
-fi
 cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 
-# Bundled SwiftUI resources (none yet beyond the icon, but keep the copy in case the
-# MochiApp target's `resources: [.process("Resources")]` ever produces a .bundle).
+# SwiftPM-processed resources (currently: MochiMenuBarTemplate.png) land in their own
+# resource bundle next to the executable; Launch Services only finds it if it's copied
+# alongside the binary inside the .app, not left in .build.
 RESOURCE_BUNDLE="$BIN_PATH/Mochi_MochiApp.bundle"
 if [ -d "$RESOURCE_BUNDLE" ]; then
     cp -R "$RESOURCE_BUNDLE" "$APP_DIR/Contents/Resources/"

@@ -51,8 +51,16 @@ Sources/
   mochi/             The CLI. Depends on MochiCore + swift-argument-parser. Each subcommand
                      is its own file under Commands/.
 
-Tests/MochiCoreTests/  44 tests covering the protocol, reducer, stale detection, persistence,
-                        and — deliberately — concurrency (many simultaneous writers).
+Tests/MochiCoreTests/  Tests covering the protocol, reducer, stale detection, persistence,
+                        agent identity, and — deliberately — concurrency (many simultaneous
+                        writers).
+
+Resources/
+  DesignSources/       The two source illustrations everything visual is generated from —
+                        see "Visual assets," below.
+  AppIcon.iconset/      Generated, gitignored intermediate.
+  AppIcon.icns           Generated, committed (so a clean checkout builds immediately).
+  AppIcon-preview.png     A static copy for this README — not used by the app itself.
 ```
 
 `MochiCore` has zero knowledge of OpenClaw, Claude Code, or any specific integration beyond the
@@ -172,6 +180,44 @@ protocol specifically so this isn't hard-wired — `TerminalAppLauncher` (plain 
 the fallback when Ghostty isn't installed, and either one only ever receives a path the caller
 has already verified exists and is a directory (`AgentActions.canOpenTerminal`), launched via
 `/usr/bin/open` with an argument array, never a constructed shell string.
+
+## Visual assets
+
+Both the app icon and the menu bar glyph are generated from two checked-in, high-resolution
+source illustrations — `Resources/DesignSources/MochiAppIcon.png` and
+`MochiMenuBarGlyph.png` — by `Scripts/generate-assets.swift`, never hand-exported or edited
+pixel-by-pixel. The two have different jobs and are processed differently:
+
+- **App icon**: `generate-assets.swift` finds the actual artwork's pixel bounding box inside
+  the source (by brightness difference from the sampled background, since this source has no
+  alpha channel), then crops the largest square frame — centered on that bbox, clamped to the
+  source's own bounds — that still gives the artwork sensible padding. Clamping to the source
+  bounds is what guarantees every exported iconset size (16pt up to 512pt@2x) is a downscale,
+  never an upscale of a smaller derivative. `Scripts/build-app.sh` runs `iconutil` on the
+  result to produce `Resources/AppIcon.icns`, copied into the `.app` bundle's `Resources/`
+  directly (the standard `CFBundleIconFile` mechanism — nothing SwiftUI/SwiftPM-specific).
+- **Menu bar glyph**: same bounding-box approach, but the crop keeps the artwork's own (non-
+  square) aspect ratio, with tighter padding than the app icon — status-bar icons sit among
+  tightly-drawn system glyphs (Wi-Fi, Control Center) and look wrong floating in extra
+  whitespace next to them. The source is already a near-opaque near-white silhouette on a
+  transparent background (confirmed by sampling actual pixel alpha values while building
+  this), so the only processing needed is normalizing its RGB to pure black — a `isTemplate`
+  image is rendered by AppKit using only the alpha channel, but doing this anyway keeps the
+  exported asset self-describing rather than depending on that rule to paper over a
+  non-black source. Exported once at a fixed, generous pixel height (216px) — far more than
+  any menu bar needs — so a single file stays crisp at every Retina scale factor; see
+  `MenuBarLabel.swift`, which loads it via `Bundle.module`, sets `NSImage.isTemplate = true`,
+  and sets `.size` explicitly to an 18pt point size (not its native pixel size) to match the
+  optical scale of neighboring system status items.
+
+`Scripts/build-app.sh` regenerates both from source whenever `Resources/AppIcon.icns` or
+`Sources/MochiApp/Resources/MochiMenuBarTemplate.png` is missing, and does so *before* calling
+`swift build` — the menu bar template is a SwiftPM-processed resource that gets compiled into
+the executable's resource bundle at build time, so it has to already exist on disk by then,
+unlike the `.icns`, which is only ever copied into the `.app` bundle afterward. Both generated
+outputs are committed (small, deterministic, and letting a clean checkout build immediately
+without re-running the generator) alongside the two source images; only the intermediate
+`Resources/AppIcon.iconset/*.png` files are gitignored.
 
 ## What's deliberately not built yet
 
