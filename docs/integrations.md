@@ -30,12 +30,45 @@ Verified against OpenClaw 2026.9.7, installed locally.
   to correlate an approval back to a specific session are **experimental**: `OpenClawAdapter`
   tries a handful of plausible key names (`agentId`, `sessionId`, `session`, `agent`, `id`) and
   skips any approval it can't identify, rather than guessing wrong.
-- `openclaw agents list --json` maps agent ids to workspace directories, used to fill in
-  `projectPath`.
+- `openclaw agents list --json` maps agent ids to `identityName` (e.g. `"Chief of Staff"`,
+  `"Developer"` — the real, user-configured name OpenClaw exposes for that agent) and
+  `workspace` (used for `projectPath`). `identityName` becomes `agentDisplayName` and is what
+  Mochi shows as the row's PRIMARY title — see "Agent identity, not provider identity," below.
+- A session `key` like `"agent:lead:dashboard:cb34..."` decomposes into the OpenClaw agent id
+  (`"lead"`, stable across every session that agent runs — becomes `agentKey`) and a session
+  kind (`"dashboard"`, `"acp"`, `"cron"`, `"main"`, ... — becomes the row's `project`/context
+  label, e.g. "Dashboard session"). A session's own `label` field (a real OpenClaw-assigned
+  description — a short nickname for a sub-thread, or a fuller task string for a spawned
+  subagent) becomes `task`.
 
 **What's not available:** OpenClaw exposes no fine-grained activity signal — no
 "thinking"/"testing" distinction. Mochi can only show working, done, or an OpenClaw-reported
-status passed through verbatim.
+status passed through verbatim. OpenClaw also doesn't expose a role distinct from
+`identityName`, so `agentRole` is left unset for OpenClaw sessions rather than fabricated.
+
+### Agent identity, not provider identity
+
+Earlier versions of this adapter put `agentInfo?.identityName` into the `project` field and
+left the UI showing "OpenClaw" as the primary title — which meant every row for every OpenClaw
+agent looked the same at a glance ("OpenClaw" / "OpenClaw" / "OpenClaw"), with the actually
+useful information (which agent, "Developer" vs. "Chief of Staff") demoted to secondary text.
+Verified live against this machine's real OpenClaw install, that's genuinely confusing: you
+can't tell two sessions of the same agent apart from two different agents, or a finished
+session from a currently-running one, by title alone.
+
+Fixed by introducing `agentKey`/`agentDisplayName` in the protocol (see
+`docs/protocol.md#agent-identity-vs-session-identity`) and populating them from the real
+`identityName`/agent-id data above. Verified output against this machine's live sessions:
+
+```
+Developer        Working      (OpenClaw) ACP session        · 16s   [openclaw:agent:developer:acp:4c43612a-...]
+Chief of Staff   Working      (OpenClaw) Dashboard session   · 16s   [openclaw:agent:lead:dashboard:cb347e08-...]
+Chief of Staff   Done         (OpenClaw)                     · 16s   [openclaw:agent:lead:main]
+```
+
+Both "Chief of Staff" rows share `agentKey = "openclaw:lead"` (confirmed via
+`mochi inspect <id>`), so they're recognizable as the same agent while remaining two distinct,
+independently-trackable sessions — one still running, one already done.
 
 **A real bug this caught:** the first version of this adapter called `sessions list` with
 `--limit all` and no recency bound. Run against this machine's actual, months-old OpenClaw
@@ -93,6 +126,20 @@ knows the actual process exit code, so `done` vs. `error` is a fact, not an infe
 ```sh
 mochi-claude-wrapper.sh Huginn "Redesign Library page" -- -p "Redesign the Library page"
 ```
+
+**Naming a persistent role** (e.g. if you run Claude Code repeatedly as a "Frontend Agent" and
+separately as a "Backend Agent"): Claude Code itself has no concept of a named persona the way
+OpenClaw does, so Mochi can't discover a name automatically — but the CLI/protocol support one
+if you supply it. Pass `--agent-name` (and `--agent-key` to link multiple sessions as the same
+agent) to `mochi start`:
+
+```sh
+mochi start --agent claude --agent-name "Frontend Agent" --agent-key "team:frontend" \
+  --project Huginn --task "Fix layout bug"
+```
+
+This is the same mechanism OpenClaw's adapter uses internally — see
+`docs/protocol.md#agent-identity-vs-session-identity`.
 
 ## Codex — Detection-only
 

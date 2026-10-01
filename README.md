@@ -14,8 +14,9 @@ rendered assets; building and running the app (instructions below) is the fastes
 ## What it is, concretely
 
 - A **menu bar app** (`Mochi.app`) that shows a 🍡 plus an active-agent count, and a popover
-  with one row per agent: a small animated character whose face encodes its status, a project
-  name, current task/activity, and elapsed time.
+  with one row per agent: a small animated character whose face encodes its status, the
+  **agent's own identity** as the primary title (not just which runtime is executing it —
+  see "Agent identity," below), current task/activity, and elapsed time.
 - A **CLI** (`mochi`) that any script or agent calls to report in: `mochi start`, `mochi
   status`, `mochi attention`, `mochi done`, `mochi error`.
 - A tiny **file-based protocol** (`~/.mochi/inbox/*.json`) connecting the two — no server, no
@@ -31,7 +32,7 @@ Requires macOS 15+ and a full Xcode installation (not just Command Line Tools �
 git clone <this repo>
 cd mochi
 swift build                 # builds MochiCore, the CLI, and the app library
-swift test                  # 44 tests — protocol parsing, state transitions, concurrency, ...
+swift test                  # 57 tests — protocol parsing, state transitions, concurrency, ...
 ./Scripts/build-app.sh       # assembles .build/Mochi.app (icon, Info.plist, ad-hoc codesign)
 open .build/Mochi.app
 ```
@@ -48,9 +49,11 @@ export PATH="$PWD/.build/out/Products/Debug:$PATH"
 mochi demo
 ```
 
-This runs four scripted agents through realistic state transitions (thinking → working →
-testing → done, one hitting an error, one requesting permission) over about 25 seconds. Watch
-the menu bar and popover update live. `mochi demo --agents 8 --step-delay 1` for a faster/bigger
+This runs six scripted agents through realistic state transitions (thinking → working →
+testing → done, one hitting an error, one requesting permission) over about 25 seconds,
+including two sessions sharing one agent identity ("Chief of Staff," running and done at the
+same time) to show how that's distinguished in the UI. Watch the menu bar and popover update
+live. `mochi demo --agents 8 --step-delay 1` for a faster/bigger
 run.
 
 ## Using the CLI for real
@@ -69,6 +72,24 @@ needs you: `mochi attention --id "$ID" --reason permission --message "..."`.
 Other commands: `mochi list` (what's known right now), `mochi inspect <id>` (full detail),
 `mochi doctor` (diagnose the local setup), `mochi --help` (everything, with full flag docs).
 All commands support `--json` for scripting. Full protocol spec: `docs/protocol.md`.
+
+## Agent identity
+
+Mochi shows **who is doing the work** as the primary title — not just which runtime is
+executing it. For OpenClaw, that's the agent's real configured name ("Developer", "Chief of
+Staff"); for a script, it's whatever you pass via `--agent-name`:
+
+```sh
+mochi start --agent claude --agent-name "Frontend Agent" --agent-key "team:frontend" \
+  --project Huginn --task "Fix layout bug"
+```
+
+`--agent-key` links multiple sessions as the same agent (so two rows read as "this agent has
+two sessions," not as an ambiguous duplicate) without merging them — each keeps its own status,
+task, and history. Omit both and a session is its own standalone agent, same as before. Full
+design rationale, including a real bug this caught (OpenClaw's provider name was being shown
+instead of the agent's identity), is in `docs/protocol.md#agent-identity-vs-session-identity`
+and `docs/integrations.md`.
 
 ## Integrations
 
@@ -131,12 +152,13 @@ malformed/quarantined events, stale sessions, and whether `openclaw` is on `PATH
 swift test
 ```
 
-44 tests across 8 suites: protocol encode/decode (including malformed JSON, unknown future
+57 tests across 10 suites: protocol encode/decode (including malformed JSON, unknown future
 status values, legacy timestamp formats), the state reducer (out-of-order delivery, duplicate
-events, multiple simultaneous sessions, history capping), stale-session detection (including a
-real spawned-and-exited process, not a mock), settings/session persistence round-trips
-(including forward/backward-compatible decoding), and concurrency (60 simultaneous event
-writers, 30 simultaneous writers to one shared file) — all passing.
+events, multiple simultaneous sessions, history capping), agent identity (the fallback chain,
+and two sessions sharing an `agentKey` resolving to the same recognizable agent), stale-session
+detection (including a real spawned-and-exited process, not a mock), settings/session
+persistence round-trips (including forward/backward-compatible decoding), and concurrency (60
+simultaneous event writers, 30 simultaneous writers to one shared file) — all passing.
 
 ## What's not done
 

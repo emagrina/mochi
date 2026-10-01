@@ -7,7 +7,11 @@ import Foundation
 /// because no single integration provides all of them (section 5 of the product spec).
 public struct AgentSession: Identifiable, Hashable, Sendable, Codable {
     public var id: String
-    public var provider: AgentProvider
+    /// WHO is doing the work — see `AgentIdentity`'s doc comment for why this is a separate
+    /// type from the session itself. `provider` below is a convenience passthrough, not a
+    /// second source of truth: it always reads `agentIdentity.provider`.
+    public var agentIdentity: AgentIdentity
+    public var provider: AgentProvider { agentIdentity.provider }
     public var sessionId: String?
     public var projectName: String?
     public var projectPath: String?
@@ -36,6 +40,7 @@ public struct AgentSession: Identifiable, Hashable, Sendable, Codable {
     public init(
         id: String,
         provider: AgentProvider,
+        agentIdentity: AgentIdentity? = nil,
         sessionId: String? = nil,
         projectName: String? = nil,
         projectPath: String? = nil,
@@ -59,7 +64,7 @@ public struct AgentSession: Identifiable, Hashable, Sendable, Codable {
         completionNotified: Bool = false
     ) {
         self.id = id
-        self.provider = provider
+        self.agentIdentity = agentIdentity ?? AgentIdentity(key: id, provider: provider)
         self.sessionId = sessionId
         self.projectName = projectName
         self.projectPath = projectPath
@@ -91,7 +96,9 @@ public struct AgentSession: Identifiable, Hashable, Sendable, Codable {
         Date().timeIntervalSince(lastActivityAt)
     }
 
+    /// The resolved primary title for this session — the agent's identity, not the runtime
+    /// that happens to be executing it. See `AgentIdentity.title`.
     public var displayName: String {
-        provider.displayName
+        agentIdentity.title
     }
 }

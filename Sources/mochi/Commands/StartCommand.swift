@@ -23,6 +23,15 @@ struct StartCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Explicit session id. Auto-generated and printed if omitted.")
     var id: String?
 
+    @Option(name: .long, help: "The agent's own name/identity, e.g. 'Frontend Agent' or 'Atlas' — shown as the primary title instead of the provider name. Omit it and this session is its own standalone agent.")
+    var agentName: String?
+
+    @Option(name: .long, help: "Stable key shared across multiple sessions of the same agent (so Mochi knows two --id values are the same agent). Defaults to this session's own id, i.e. not shared, if omitted.")
+    var agentKey: String?
+
+    @Option(name: .long, help: "A role/persona descriptor, if distinct from --agent-name.")
+    var agentRole: String?
+
     @Option(name: .long, help: "Git branch, if known.")
     var branch: String?
 
@@ -35,6 +44,9 @@ struct StartCommand: AsyncParsableCommand {
             event: .start,
             agentId: agentId,
             provider: agent,
+            agentKey: agentKey,
+            agentDisplayName: agentName,
+            agentRole: agentRole,
             project: project,
             projectPath: projectPath,
             task: task,

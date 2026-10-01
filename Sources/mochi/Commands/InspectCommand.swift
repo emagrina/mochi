@@ -25,7 +25,10 @@ struct InspectCommand: AsyncParsableCommand {
             return
         }
 
-        print("Agent        \(session.provider.displayName)")
+        print("Agent        \(session.displayName)")
+        if let descriptor = session.agentIdentity.secondaryDescriptor { print("             \(descriptor)") }
+        print("Provider     \(session.provider.displayName)")
+        print("Agent key    \(session.agentIdentity.key)")
         print("Session id   \(session.id)")
         print("Status       \(session.status.friendlyLabel) (\(session.status.rawValue))")
         if let project = session.projectName { print("Project      \(project)") }

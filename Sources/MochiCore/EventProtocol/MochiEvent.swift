@@ -19,8 +19,25 @@ public struct MochiEvent: Codable, Sendable, Hashable {
 
     public var version: Int
     public var event: Kind
+    /// The identifier for THIS RUN — historically named `agentId` in the wire format (kept
+    /// for backward compatibility; see `docs/protocol.md`), but it has always really been a
+    /// *session* identifier: Mochi dedicates one dictionary entry, one activity log, one row
+    /// to each distinct value of this field. For the agent's own stable identity — who is
+    /// doing the work, shared across many sessions — see `agentKey`/`agentDisplayName` below.
     public var agentId: String
     public var provider: String?
+    /// Stable key for the agent itself, independent of this particular session. Omit it and
+    /// Mochi treats this session as its own standalone agent (the original, still-default
+    /// behavior); set it to the same value across multiple `start` calls to tell Mochi "these
+    /// are different sessions of the same agent." Never the provider name — see
+    /// `AgentIdentity`.
+    public var agentKey: String?
+    /// The agent's configured/custom display name, if one exists (e.g. OpenClaw's
+    /// `identityName`, or a caller-supplied `--agent-name`). This becomes the PRIMARY title
+    /// in the UI, ahead of `provider`.
+    public var agentDisplayName: String?
+    /// A role/persona descriptor, when distinct from `agentDisplayName`.
+    public var agentRole: String?
     public var sessionId: String?
     public var project: String?
     public var projectPath: String?
@@ -42,6 +59,9 @@ public struct MochiEvent: Codable, Sendable, Hashable {
         event: Kind,
         agentId: String,
         provider: String? = nil,
+        agentKey: String? = nil,
+        agentDisplayName: String? = nil,
+        agentRole: String? = nil,
         sessionId: String? = nil,
         project: String? = nil,
         projectPath: String? = nil,
@@ -62,6 +82,9 @@ public struct MochiEvent: Codable, Sendable, Hashable {
         self.event = event
         self.agentId = agentId
         self.provider = provider
+        self.agentKey = agentKey
+        self.agentDisplayName = agentDisplayName
+        self.agentRole = agentRole
         self.sessionId = sessionId
         self.project = project
         self.projectPath = projectPath

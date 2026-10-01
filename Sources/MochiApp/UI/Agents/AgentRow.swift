@@ -13,17 +13,25 @@ struct AgentRow: View {
             MochiAvatar(status: session.status, provider: session.provider, size: 32, reducedMotion: reducedMotion)
 
             VStack(alignment: .leading, spacing: 2) {
+                // The agent's own identity is the strongest text in the row — who is doing
+                // the work, not which runtime happens to be running it. See
+                // AgentIdentity.title and docs/architecture.md's "Agent vs. session identity."
                 HStack(spacing: 4) {
                     Text(session.displayName)
                         .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
                     if session.discovery == .detected {
                         Text("· detected")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
                 }
-                if let project = session.projectName {
-                    Text(project)
+                // Secondary: role/provider and project/session-context — e.g. "Developer ·
+                // Aenari" or "OpenClaw · Dashboard session". This is what lets two rows for
+                // the same agent (two sessions) read as distinguishable rather than as an
+                // ambiguous duplicate.
+                if let context = contextLine {
+                    Text(context)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -52,6 +60,11 @@ struct AgentRow: View {
         .accessibilityLabel(accessibilityLabel)
     }
 
+    private var contextLine: String? {
+        let parts = [session.agentIdentity.secondaryDescriptor, session.projectName].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     private var subtitle: String {
         if session.discovery == .detected {
             return "No activity information available"
@@ -68,11 +81,20 @@ struct AgentRow: View {
         if isStale {
             return "Last seen \(Self.shortDuration(now.timeIntervalSince(session.lastActivityAt))) ago"
         }
-        return Self.shortDuration(session.finishedAt.map { $0.timeIntervalSince(session.startedAt) } ?? now.timeIntervalSince(session.startedAt))
+        // "2m ago" (time since it finished) rather than "14m" (how long the task took) — a
+        // completed session showing an elapsed-looking duration reads too much like an
+        // active one; "ago" is the unambiguous "this is done" signal.
+        if let finishedAt = session.finishedAt {
+            return "\(Self.shortDuration(now.timeIntervalSince(finishedAt))) ago"
+        }
+        return Self.shortDuration(now.timeIntervalSince(session.startedAt))
     }
 
     private var accessibilityLabel: String {
-        "\(session.displayName), \(session.projectName ?? "project unknown"), \(session.status.friendlyLabel), \(subtitle), \(elapsedText)"
+        var parts = [session.displayName]
+        if let context = contextLine { parts.append(context) }
+        parts.append(contentsOf: [session.status.friendlyLabel, subtitle, elapsedText])
+        return parts.joined(separator: ", ")
     }
 
     static func shortDuration(_ interval: TimeInterval) -> String {

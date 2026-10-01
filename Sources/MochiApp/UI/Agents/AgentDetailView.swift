@@ -29,8 +29,9 @@ struct AgentDetailView: View {
             MochiAvatar(status: session.status, provider: session.provider, size: 44)
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.displayName).font(.headline)
-                if let project = session.projectName {
-                    Text(project).font(.subheadline).foregroundStyle(.secondary)
+                let context = [session.agentIdentity.secondaryDescriptor, session.projectName].compactMap { $0 }.joined(separator: " · ")
+                if !context.isEmpty {
+                    Text(context).font(.subheadline).foregroundStyle(.secondary)
                 }
                 StatusBadge(status: session.status)
             }
@@ -46,6 +47,7 @@ struct AgentDetailView: View {
 
     private var infoGrid: some View {
         VStack(alignment: .leading, spacing: 6) {
+            row("Provider", session.provider.displayName)
             if let task = session.currentTask { row("Task", task) }
             if let activity = session.currentActivity { row("Activity", activity) }
             row("Started", session.startedAt.formatted(date: .abbreviated, time: .shortened))

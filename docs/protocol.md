@@ -84,9 +84,20 @@ stay useful even if `Mochi.app` has never been launched.
   "version": 1,                 // required. Any value 1...currentVersion is accepted.
   "event": "status",            // required. One of: start, status, activity, attention,
                                  // completed, error, heartbeat.
-  "agentId": "claude-huginn-01", // required, non-empty. Stable identifier for this session —
-                                  // see "Choosing an agentId" below.
+  "agentId": "claude-huginn-01", // required, non-empty. Identifier for this SESSION (despite
+                                  // the name — kept for backward compatibility; see "Agent
+                                  // identity vs. session identity" below). See "Choosing an
+                                  // agentId" below.
   "provider": "claude",          // optional. claude | codex | openclaw | anything else.
+  "agentKey": "openclaw:lead",    // optional. Stable identity for the AGENT itself, shared
+                                   // across every session that agent runs. Omit it and this
+                                   // session is treated as its own standalone agent (the
+                                   // original, still-default behavior).
+  "agentDisplayName": "Chief of Staff", // optional. The agent's configured/custom name —
+                                          // becomes the PRIMARY title in the UI, ahead of
+                                          // `provider`. See "Agent identity," below.
+  "agentRole": "...",             // optional. A role/persona descriptor, if distinct from
+                                    // agentDisplayName.
   "sessionId": "...",            // optional. The *tool's own* session id, if different from agentId.
   "project": "Huginn",           // optional display name.
   "projectPath": "/Users/.../Huginn", // optional absolute path.
@@ -130,6 +141,42 @@ you can have many Claude or Codex sessions running at once. `mochi start` genera
 (`<provider>-<project-slug>-<6 hex chars>`) and prints it; scripts capture it and pass it to
 every subsequent call. If you already have a stable identifier (a tool's own session UUID, a
 PID, a tmux pane id), use that instead.
+
+### Agent identity vs. session identity
+
+These are two different things, and conflating them was a real bug: Mochi used to show the
+*provider* ("OpenClaw") as the big title in the UI, with the actual agent ("Developer", "Chief
+of Staff") relegated to a secondary line — backwards for anyone trying to recognize *who* is
+working at a glance.
+
+- **Session identity** (`agentId`, the required field) — one run. One dictionary entry, one
+  activity log, one row in the popover. A session always belongs to exactly one agent.
+- **Agent identity** (`agentKey` + `agentDisplayName`/`agentRole`, both optional) — *who* is
+  doing the work, independent of any one run. One agent can have many sessions — a main
+  conversation, a dashboard sub-thread, a spawned subagent — all sharing the same `agentKey`
+  and `agentDisplayName`, each with its own `agentId`.
+
+Mochi never merges two `AgentSession` rows into one just because they share an `agentKey` —
+that would hide real information (a currently-running session vs. one that already finished,
+for instance). What sharing a key gets you is that both rows display the *same recognizable
+agent name*, so "two 'Chief of Staff' rows" reads as "this agent has two sessions," not as
+"are these the same thing or not?" See `AgentIdentity` in `MochiCore/Domain/` and
+`docs/architecture.md`.
+
+The resolved title shown in the UI follows this fallback order: `agentDisplayName` →
+`agentRole`-as-name (if `agentDisplayName` is absent, a short `name` would slot in here, but no
+current integration populates one distinct from `agentDisplayName`) → `agentRole` → the
+provider name, as an absolute last resort. The raw `agentKey`/`agentId` are never shown as a
+title — a technical identifier like `openclaw:agent:lead:dashboard:cb34...` is worse as a
+"name" than just honestly saying "OpenClaw."
+
+If you report multiple sessions for what is conceptually one persistent agent (e.g. a named
+Claude Code role you reuse across tasks), pass the same `--agent-key`/`agentKey` each time:
+
+```sh
+mochi start --agent claude --agent-name "Frontend Agent" --agent-key "team:frontend" \
+  --project Huginn --task "Fix layout bug"
+```
 
 ## Resilience and concurrency, concretely
 

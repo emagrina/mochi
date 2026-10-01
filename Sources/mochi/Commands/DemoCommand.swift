@@ -5,15 +5,17 @@ import MochiCore
 /// `mochi demo` — runs a handful of fake agents through realistic state transitions so
 /// Mochi.app's UI can be exercised without any real coding agent running (product spec
 /// section 35). Deliberately touches every status the UI needs to render at least once:
-/// starting, thinking, working, testing, needsPermission, done, and error.
+/// starting, thinking, working, testing, needsPermission, done, and error. The last two
+/// scenarios also share an `agentKey`/`agentName` ("Chief of Staff") on purpose, to exercise
+/// "multiple sessions, one agent identity" without needing a live OpenClaw install.
 struct DemoCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "demo",
         abstract: "Simulate a few agents working, for UI development and demos."
     )
 
-    @Option(name: .long, help: "How many scripted agents to run (cycles through 4 scenarios).")
-    var agents: Int = 4
+    @Option(name: .long, help: "How many scripted agents to run (cycles through 6 scenarios).")
+    var agents: Int = 6
 
     @Option(name: .long, help: "Seconds between each simulated step.")
     var stepDelay: Double = 2.5
@@ -41,6 +43,10 @@ struct DemoCommand: AsyncParsableCommand {
         let task: String
         let branch: String?
         let steps: [Step]
+        /// Shared across multiple scenarios to demonstrate "same agent, different sessions" —
+        /// see the two "demo-openclaw-chief-of-staff" scenarios below.
+        var agentKey: String? = nil
+        var agentName: String? = nil
     }
 
     private enum Step {
@@ -105,6 +111,39 @@ struct DemoCommand: AsyncParsableCommand {
                     .status(.thinking, activity: "Reading image pipeline code", message: nil),
                     .status(.working, activity: "Refactoring resize logic", message: "Refactoring image pipeline")
                 ]
+            ),
+            // These two share an agentKey/agentName on purpose: this is the exact shape an
+            // OpenClaw-style persistent agent takes in real usage (see OpenClawAdapter) — one
+            // named identity, multiple concurrent sessions, one of which may finish while
+            // another keeps going. Demonstrates that the UI shows "Chief of Staff" as the
+            // title for both rows (not "OpenClaw" twice) while keeping them distinguishable.
+            Scenario(
+                agentId: "demo-openclaw-chief-of-staff-main",
+                provider: "openclaw",
+                project: "Aenari",
+                projectPath: NSHomeDirectory() + "/Documents/Projects/aenari",
+                task: "Coordinating the team",
+                branch: nil,
+                steps: [
+                    .status(.working, activity: nil, message: "Coordinating implementation"),
+                    .done(message: "Session finished.", prNumber: nil, prURL: nil, prTitle: nil)
+                ],
+                agentKey: "demo-openclaw:chief-of-staff",
+                agentName: "Chief of Staff"
+            ),
+            Scenario(
+                agentId: "demo-openclaw-chief-of-staff-dashboard",
+                provider: "openclaw",
+                project: "Dashboard session",
+                projectPath: NSHomeDirectory() + "/Documents/Projects/aenari",
+                task: "Aenari",
+                branch: nil,
+                steps: [
+                    .status(.thinking, activity: nil, message: "Reviewing subagent output"),
+                    .status(.working, activity: nil, message: "Coordinating implementation")
+                ],
+                agentKey: "demo-openclaw:chief-of-staff",
+                agentName: "Chief of Staff"
             )
         ]
         guard count != templates.count else { return templates }
@@ -120,7 +159,11 @@ struct DemoCommand: AsyncParsableCommand {
                 projectPath: template.projectPath,
                 task: template.task,
                 branch: template.branch,
-                steps: template.steps
+                steps: template.steps,
+                // Keep sharing the same agentKey across repeats so the "two sessions, one
+                // agent" demo still works even at --agents counts above the template count.
+                agentKey: template.agentKey,
+                agentName: template.agentName
             )
         }
     }
@@ -130,6 +173,8 @@ struct DemoCommand: AsyncParsableCommand {
             event: .start,
             agentId: scenario.agentId,
             provider: scenario.provider,
+            agentKey: scenario.agentKey,
+            agentDisplayName: scenario.agentName,
             project: scenario.project,
             projectPath: scenario.projectPath,
             task: scenario.task,
