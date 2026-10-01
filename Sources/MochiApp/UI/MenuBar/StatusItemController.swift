@@ -155,6 +155,10 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         withObservationTracking {
             _ = model.aggregate
             _ = model.settings.showCountInMenuBar
+            // Detail and the main list are different heights; this is what makes the panel
+            // resize when `PopoverView` navigates between them, not just when the agent list
+            // itself changes.
+            _ = model.selectedSessionID
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self else { return }

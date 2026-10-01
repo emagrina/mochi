@@ -17,22 +17,18 @@ struct PopoverView: View {
 
     var body: some View {
         @Bindable var model = model
-        NavigationStack {
-            VStack(spacing: 0) {
-                header
-                if model.visibleSessions.isEmpty {
-                    emptyHint
-                } else {
-                    cardList
+        Group {
+            if let id = model.selectedSessionID, let session = model.session(id: id) {
+                AgentDetailView(session: session, now: model.now, reducedMotion: model.settings.reducedMotion) {
+                    navigate(to: nil)
                 }
-                problemSummary
-            }
-            .navigationDestination(for: String.self) { sessionID in
-                if let session = model.session(id: sessionID) {
-                    AgentDetailView(session: session, now: model.now)
-                }
+                .transition(.opacity.combined(with: .move(edge: .trailing)))
+            } else {
+                mainList
+                    .transition(.opacity)
             }
         }
+        .animation(model.settings.reducedMotion ? nil : .easeInOut(duration: 0.22), value: model.selectedSessionID)
         // Width is fixed (design-reference.png's proportions); height is intentionally NOT —
         // it hugs however many cards are actually present and only caps out, scrolling
         // internally, once there are enough agents to need it. See `cardListHeight`.
@@ -61,6 +57,31 @@ struct PopoverView: View {
                 openWindow(id: "onboarding")
             }
         }
+    }
+
+    /// The main agent list — what used to be `NavigationStack`'s root. Simple state-driven
+    /// navigation (see `body`'s `Group`) replaces the stack entirely: this custom borderless
+    /// panel has no toolbar/title bar to host `NavigationStack`'s automatic back button, so a
+    /// stack-based push left the user with no way back at all. `model.selectedSessionID` —
+    /// already present on `AppModel` but previously unused for this — is the single source of
+    /// truth for which screen shows instead.
+    private var mainList: some View {
+        VStack(spacing: 0) {
+            header
+            if model.visibleSessions.isEmpty {
+                emptyHint
+            } else {
+                cardList
+            }
+            problemSummary
+        }
+    }
+
+    /// Animates the swap between the main list and detail (a restrained fade + slide, per the
+    /// product spec's "Mochi should stay calm") unless Reduced Motion is on, in which case it's
+    /// an instant cut. Both directions — opening a detail and going back — run through this.
+    private func navigate(to sessionID: String?) {
+        model.selectedSessionID = sessionID
     }
 
     // MARK: - Header
@@ -117,7 +138,9 @@ struct PopoverView: View {
         ScrollView {
             LazyVStack(spacing: AgentCard.cardSpacing) {
                 ForEach(model.visibleSessions) { session in
-                    NavigationLink(value: session.id) {
+                    Button {
+                        navigate(to: session.id)
+                    } label: {
                         AgentCard(
                             session: session,
                             now: model.now,

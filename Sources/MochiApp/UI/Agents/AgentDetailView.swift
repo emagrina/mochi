@@ -1,71 +1,120 @@
 import SwiftUI
 import MochiCore
 
+/// One agent's full detail — reached by tapping a card, left by tapping `backButton` (or
+/// `⌘[`). `onBack` is a plain closure rather than this view reaching into `AppModel` itself:
+/// `PopoverView` owns the one piece of navigation state (`AppModel.selectedSessionID`), this
+/// view just reports "the user wants out."
 struct AgentDetailView: View {
     let session: AgentSession
     let now: Date
+    let reducedMotion: Bool
+    let onBack: () -> Void
+
+    /// Keeps the detail screen roughly the same overall height as the main list rather than
+    /// growing to fit however much recent-activity history a long-running agent has
+    /// accumulated — the fixed header sits above this, and this scrolls internally beyond it.
+    private static let scrollAreaHeight: CGFloat = 440
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                if session.discovery == .detected {
-                    detectedNotice
-                } else {
-                    card { infoGrid }
-                    actions
-                    if !session.recentActivity.isEmpty {
-                        card { activityLog }
+        VStack(alignment: .leading, spacing: 0) {
+            detailHeader
+            if session.discovery == .detected {
+                detectedNotice
+                    .padding(EdgeInsets(top: 0, leading: 20, bottom: 24, trailing: 20))
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        card { infoGrid }
+                        card { actions }
+                        if !session.recentActivity.isEmpty {
+                            card { activityLog }
+                        }
                     }
+                    // Trailing > leading on purpose: gives the scrollbar room of its own
+                    // instead of letting it overlap the cards' rounded right edge.
+                    .padding(EdgeInsets(top: 4, leading: 20, bottom: 20, trailing: 22))
                 }
+                .frame(height: Self.scrollAreaHeight)
             }
-            .padding(16)
         }
-        .frame(width: 440, height: 540)
     }
 
-    /// The same soft rounded surface `AgentCard` uses, reused here for visual consistency
-    /// with the popover's card language — material and shadow carry the separation, not a
-    /// stroke (see `MochiColors.cardSurface`).
-    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        content()
-            .padding(16)
-            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(MochiColors.cardSurface))
-    }
+    // MARK: - Header
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            MochiAvatar(status: session.status, identityKey: session.agentIdentity.key, size: 48)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(session.displayName).font(.headline)
-                    if session.source == .demo {
-                        Text("· Demo")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                let context = [session.agentIdentity.secondaryDescriptor, session.projectName].compactMap { $0 }.joined(separator: " · ")
-                if !context.isEmpty {
-                    Text(context).font(.subheadline).foregroundStyle(.secondary)
+    private var detailHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            backButton
+            MochiAvatar(status: session.status, identityKey: session.agentIdentity.key, size: 48, reducedMotion: reducedMotion)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(session.displayName)
+                    .font(.system(size: 17, weight: .semibold))
+                    .lineLimit(1)
+                if let context = contextLine {
+                    Text(context)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
                 StatusPill(status: session.status)
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
+        .padding(EdgeInsets(top: 20, leading: 20, bottom: 16, trailing: 18))
+    }
+
+    /// Small, rounded, material-backed — the same visual family as the main header's settings
+    /// gear and each card's chevron, not a traditional toolbar/title-bar back control. `⌘[` is
+    /// supported as a bonus for anyone who already reaches for it; the button itself is what
+    /// the product spec requires, since nobody should have to know a shortcut exists.
+    private var backButton: some View {
+        Button(action: onBack) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 30)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(MochiColors.chipSurface))
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut("[", modifiers: .command)
+        .help("Back to agent list")
+        .accessibilityLabel("Back")
+    }
+
+    /// Demo provenance folds into this line rather than sitting beside the name as its own
+    /// badge — same treatment `AgentCard` uses, for consistency between the list and detail.
+    private var contextLine: String? {
+        var parts = [session.agentIdentity.secondaryDescriptor, session.projectName].compactMap { $0 }
+        if session.source == .demo { parts.append("Demo") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private var detectedNotice: some View {
         Text("A \(session.displayName) process is running, but it hasn't been instrumented with the Mochi protocol, so no activity details are available. See the Integrations tab in Settings to wire it up.")
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // MARK: - Cards
+
+    /// The same soft rounded surface `AgentCard` uses, reused here for visual consistency
+    /// with the popover's card language — material and shadow carry the separation, not a
+    /// stroke (see `MochiColors.cardSurface`). `.frame(maxWidth: .infinity)` is what makes
+    /// every card (info, actions, activity) span the same width instead of shrinking to fit
+    /// whatever its shortest row happens to be.
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(MochiColors.cardSurface))
     }
 
     private var infoGrid: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
             row("Source", sourceLabel)
             row("Provider", session.provider.displayName)
-            row("Agent key", session.agentIdentity.key)
+            row("Agent key", session.agentIdentity.key, monospaced: true)
             if let task = session.currentTask { row("Task", task) }
             if let activity = session.currentActivity { row("Activity", activity) }
             row("Started", session.startedAt.formatted(date: .abbreviated, time: .shortened))
@@ -86,9 +135,9 @@ struct AgentDetailView: View {
                 row("Process", "PID \(pid) · \(StaleDetector.isProcessAlive(pid: pid) ? "running" : "not running")")
             }
             if let branch = session.branch { row("Branch", branch) }
-            if let sessionId = session.sessionId { row("Session", sessionId) }
-            row("Session ID", session.id)
-            if let path = session.projectPath { row("Path", path) }
+            if let sessionId = session.sessionId { row("Session", sessionId, monospaced: true) }
+            row("Session ID", session.id, monospaced: true)
+            if let path = session.projectPath { row("Path", path, monospaced: true) }
             if let reason = session.attentionReason { row("Needs you", reason.friendlyLabel) }
             if let attentionMessage = session.attentionMessage { row("Message", attentionMessage) }
             if let error = session.errorMessage { row("Error", error) }
@@ -98,33 +147,43 @@ struct AgentDetailView: View {
         }
     }
 
-    private func row(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+    /// `.frame(maxWidth: .infinity)` on the value (not a trailing `Spacer`) is what lets long
+    /// values — a full session UUID, a deep project path — wrap onto a second line instead of
+    /// being truncated, while still reliably stretching the row to the card's full width when
+    /// the value is short. Identifiers (`monospaced`) read more legibly in a fixed-width face.
+    private func row(_ label: String, _ value: String, monospaced: Bool = false) -> some View {
+        HStack(alignment: .top, spacing: 10) {
             Text(label)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
-                .frame(width: 90, alignment: .leading)
+                .frame(width: 92, alignment: .leading)
             Text(value)
-                .font(.system(size: 12))
+                .font(monospaced ? .system(size: 11.5, design: .monospaced) : .system(size: 12))
                 .textSelection(.enabled)
-            Spacer(minLength: 0)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
+    // MARK: - Actions
+
     private var actions: some View {
-        FlowActions {
-            if AgentActions.canOpenProject(session) {
-                actionButton("Open Project", "folder") { AgentActions.openProjectInFinder(session) }
-            }
-            if AgentActions.canOpenTerminal(session) {
-                actionButton("Open Terminal", "terminal") { AgentActions.openTerminal(session) }
-            }
-            if AgentActions.canOpenPullRequest(session) {
-                actionButton("Open Pull Request", "arrow.up.right.square") { AgentActions.openPullRequest(session) }
-            }
-            actionButton("Copy Session ID", "doc.on.doc") { AgentActions.copySessionID(session) }
-            if session.projectPath != nil {
-                actionButton("Copy Path", "doc.on.doc") { AgentActions.copyProjectPath(session) }
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Actions").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+            WrapHStack {
+                if AgentActions.canOpenProject(session) {
+                    actionButton("Open Project", "folder") { AgentActions.openProjectInFinder(session) }
+                }
+                if AgentActions.canOpenTerminal(session) {
+                    actionButton("Open Terminal", "terminal") { AgentActions.openTerminal(session) }
+                }
+                if AgentActions.canOpenPullRequest(session) {
+                    actionButton("Open Pull Request", "arrow.up.right.square") { AgentActions.openPullRequest(session) }
+                }
+                actionButton("Copy Session ID", "doc.on.doc") { AgentActions.copySessionID(session) }
+                if session.projectPath != nil {
+                    actionButton("Copy Path", "doc.on.doc") { AgentActions.copyProjectPath(session) }
+                }
             }
         }
     }
@@ -138,17 +197,24 @@ struct AgentDetailView: View {
         .controlSize(.small)
     }
 
+    // MARK: - Recent activity
+
     private var activityLog: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Recent activity").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-            ForEach(session.recentActivity.reversed().prefix(20)) { entry in
-                HStack(alignment: .top, spacing: 8) {
-                    Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 60, alignment: .leading)
-                    Text(entry.message)
-                        .font(.system(size: 11.5))
+            VStack(alignment: .leading, spacing: 7) {
+                ForEach(session.recentActivity.reversed().prefix(20)) { entry in
+                    HStack(alignment: .top, spacing: 10) {
+                        Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                            .monospacedDigit()
+                            .frame(width: 60, alignment: .leading)
+                        Text(entry.message)
+                            .font(.system(size: 11.5))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
         }
@@ -173,19 +239,6 @@ struct AgentDetailView: View {
 
 /// A trivial flow layout for action buttons so they wrap instead of overflowing at the
 /// popover's fixed width.
-private struct FlowActions<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Actions").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-            WrapHStack {
-                content
-            }
-        }
-    }
-}
-
 private struct WrapHStack: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? 300
