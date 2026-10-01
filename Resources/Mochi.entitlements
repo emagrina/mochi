@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+    Deliberately empty — this is not a placeholder someone forgot to fill in.
+
+    No com.apple.security.app-sandbox: Mochi launches arbitrary local tools via `Process`
+    (/usr/bin/open, /usr/bin/git, the user's preferred terminal, their own `openclaw` CLI if
+    installed) and reads whatever project paths an agent reports. The App Sandbox would block
+    or require interactive user-granted bookmarks for nearly all of that, breaking the exact
+    integration Mochi exists to provide. See Scripts/sign-app.sh and docs/releasing.md.
+
+    No hardened-runtime exceptions: Hardened Runtime (enabled separately, via
+    `codesign --options runtime` in Scripts/sign-app.sh) is sufficient on its own for Apple
+    notarization here, because Mochi needs none of the things those exceptions exist for —
+    no JIT, no unsigned executable memory, no disabled library validation, no debugging other
+    processes.
+
+    Kept as an empty entitlements file rather than omitted entirely so `codesign
+    --entitlements` has a real, reviewed target to extend if a genuine future requirement
+    ever appears, instead of one getting bolted on ad hoc.
+    -->
+</dict>
+</plist>

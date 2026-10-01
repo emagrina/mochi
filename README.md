@@ -26,6 +26,24 @@ section.
   socket, no account, no network. See `docs/protocol.md`.
 - **Local-first, zero telemetry.** Nothing leaves your machine. See "Privacy," below.
 
+## Install
+
+Download the latest `Mochi-<version>.dmg` from
+[GitHub Releases](../../releases/latest) — no Terminal, no Swift, no cloning this repo.
+
+1. Open the downloaded `Mochi-<version>.dmg`.
+2. Drag `Mochi` onto `Applications`.
+3. Open Mochi from Applications (or Spotlight) like any other app.
+
+**These are currently unsigned community builds** — Apple Developer ID signing and
+notarization aren't set up yet (see `docs/releasing.md`), so macOS Gatekeeper will warn that
+Mochi is "from an unidentified developer" the first time you open it. That's expected, not a
+sign anything is wrong: right-click (Control-click) `Mochi.app` and choose **Open**, then
+confirm once in the dialog that appears. These builds are **not** Apple-notarized — that
+claim will only appear here once it's actually true.
+
+Prefer to build from source instead? Continue to "Build & run" below.
+
 ## Build & run
 
 Requires macOS 15+ and a full Xcode installation (not just Command Line Tools — see
@@ -42,6 +60,8 @@ open .build/Mochi.app
 
 The Mochi glyph appears in your menu bar as a proper template icon — white in dark menu bars,
 black in light ones, automatically. For a release build: `./Scripts/build-app.sh release`.
+To build your own installable `.dmg` — the same kind "Install" above points to — see
+`docs/releasing.md`.
 
 ### See it working immediately
 
