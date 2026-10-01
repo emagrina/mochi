@@ -1,16 +1,19 @@
 import SwiftUI
 import MochiCore
 
-/// The popover root: one large soft floating surface (`.regularMaterial`, clipped to a big
-/// rounded rect — reference.png's silhouette) containing the header, the agent card list or
-/// empty state, and — only when there's something worth saying — a problem summary. Built
-/// from native materials and semantic colors throughout, specifically so it survives both
-/// system appearances without a hardcoded background (see `MochiColors`).
+/// The popover root: one large soft floating surface — design-reference.png's silhouette —
+/// containing the header, the agent card list or empty state, and — only when there's
+/// something worth saying — a problem summary. Built from native materials and semantic
+/// colors throughout, specifically so it survives both system appearances without a
+/// hardcoded background (see `MochiColors`).
 struct PopoverView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
     @State private var hoveredSessionID: String?
+
+    static let panelWidth: CGFloat = 500
+    static let panelCornerRadius: CGFloat = 34
 
     var body: some View {
         @Bindable var model = model
@@ -18,7 +21,7 @@ struct PopoverView: View {
             VStack(spacing: 0) {
                 header
                 if model.visibleSessions.isEmpty {
-                    EmptyStateView()
+                    emptyHint
                 } else {
                     cardList
                 }
@@ -30,17 +33,26 @@ struct PopoverView: View {
                 }
             }
         }
-        // Width is fixed (reference.png's proportions); height is intentionally NOT — it
-        // hugs however many cards are actually present (product spec: "do not make the
-        // window unnecessarily tall") and only caps out, scrolling internally, once there
-        // are enough agents to need it. See `cardListHeight`.
-        .frame(width: 400)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(MochiColors.cardBorder, lineWidth: 1)
-        )
+        // Width is fixed (design-reference.png's proportions); height is intentionally NOT —
+        // it hugs however many cards are actually present and only caps out, scrolling
+        // internally, once there are enough agents to need it. See `cardListHeight`.
+        .frame(width: Self.panelWidth)
+        .background {
+            RoundedRectangle(cornerRadius: Self.panelCornerRadius, style: .continuous)
+                .fill(.regularMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Self.panelCornerRadius, style: .continuous)
+                        .fill(MochiColors.panelTint)
+                )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Self.panelCornerRadius, style: .continuous))
+        .compositingGroup()
+        .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
+        // The system window a MenuBarExtra(.window) popover lives in is opaque by default;
+        // without this, its square corners show through behind our rounded, clipped content
+        // the instant the window is wider/taller than our shape at any point — exactly the
+        // "rectangular layer behind the rounded panel" the design explicitly rules out.
+        .background(WindowTransparencyConfigurator())
         .onAppear {
             if !model.settings.hasCompletedOnboarding {
                 openWindow(id: "onboarding")
@@ -51,19 +63,19 @@ struct PopoverView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
-            MochiMascotHeader(size: 76)
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .center, spacing: 16) {
+            MochiMascotHeader(size: 92)
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Mochi")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.system(size: 25, weight: .bold, design: .rounded))
                 Text(headerSubtitle)
-                    .font(.system(size: 13))
+                    .font(.system(size: 13.5))
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             settingsButton
         }
-        .padding(EdgeInsets(top: 20, leading: 20, bottom: 16, trailing: 16))
+        .padding(EdgeInsets(top: 22, leading: 20, bottom: 14, trailing: 18))
     }
 
     private var settingsButton: some View {
@@ -72,7 +84,10 @@ struct PopoverView: View {
                 .font(.system(size: 14))
                 .foregroundStyle(.secondary)
                 .frame(width: 34, height: 34)
-                .background(Circle().fill(MochiColors.chipSurface))
+                .background(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(MochiColors.chipSurface)
+                )
         }
         .buttonStyle(.plain)
         .help("Settings")
@@ -80,11 +95,10 @@ struct PopoverView: View {
     }
 
     /// Context-aware, one line, never cluttered: attention beats "working" beats a plain
-    /// count, so the single most important fact is always what's shown (product spec's
-    /// "whichever wording best represents the actual current state").
+    /// count, so the single most important fact is always what's shown.
     private var headerSubtitle: String {
         let aggregate = model.aggregate
-        if aggregate.total == 0 { return "No agents working" }
+        if aggregate.total == 0 { return "All quiet" }
         if aggregate.needsAttention > 0 {
             return aggregate.needsAttention == 1 ? "1 needs you" : "\(aggregate.needsAttention) need you"
         }
@@ -98,7 +112,7 @@ struct PopoverView: View {
 
     private var cardList: some View {
         ScrollView {
-            LazyVStack(spacing: 10) {
+            LazyVStack(spacing: AgentCard.cardSpacing) {
                 ForEach(model.visibleSessions) { session in
                     NavigationLink(value: session.id) {
                         AgentCard(
@@ -112,28 +126,43 @@ struct PopoverView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 4)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 6)
         }
         .frame(height: cardListHeight)
     }
 
-    /// Hugs the actual card count up to ~5 cards tall, then holds there and lets the
-    /// `ScrollView` take over — never shorter than one card, never so tall the window
-    /// dwarfs a real menu bar utility just because a lot of agents happen to be active.
+    /// Hugs the actual card count up to ~4.5 cards tall (design-reference.png shows exactly
+    /// four comfortably), then holds there and lets the `ScrollView` take over — never
+    /// shorter than one card, never so tall the window dwarfs a real menu bar utility just
+    /// because a lot of agents happen to be active.
     private var cardListHeight: CGFloat {
-        let cardHeight: CGFloat = 94
-        let gap: CGFloat = 10
+        let cardHeight = AgentCard.cardHeight
+        let gap = AgentCard.cardSpacing
         let count = max(1, model.visibleSessions.count)
         let needed = CGFloat(count) * cardHeight + CGFloat(count - 1) * gap
-        let visibleCap = 4.6 * cardHeight + 3.6 * gap
+        let visibleCap = 4.5 * cardHeight + 3.5 * gap
         return min(needed, visibleCap) + 4
+    }
+
+    /// The empty state keeps the header's own mascot as the only illustration (design spec:
+    /// "do not create an unnecessary second illustration") and just adds one quiet line of
+    /// guidance where the card list would otherwise be.
+    private var emptyHint: some View {
+        Text("They'll show up here when an agent reports in. Try `mochi demo` to see how it looks.")
+            .font(.system(size: 12.5))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity)
+            .padding(EdgeInsets(top: 4, leading: 32, bottom: 30, trailing: 32))
     }
 
     // MARK: - Problem summary
 
-    /// Only takes up space when there's something to say — reference.png shows no footer at
-    /// all when every agent is fine, so neither does this.
+    /// Only takes up space when there's something to say — design-reference.png shows no
+    /// footer at all when every agent is fine, so neither does this. Uses the same soft,
+    /// borderless surface language as the cards, just tinted by the pill colors.
     @ViewBuilder
     private var problemSummary: some View {
         let aggregate = model.aggregate
@@ -149,8 +178,8 @@ struct PopoverView: View {
             .foregroundStyle(colors.foreground)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(colors.background))
-            .padding(EdgeInsets(top: 10, leading: 16, bottom: 16, trailing: 16))
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(colors.background))
+            .padding(EdgeInsets(top: 10, leading: 18, bottom: 18, trailing: 18))
         }
     }
 
@@ -166,17 +195,26 @@ struct PopoverView: View {
     }
 }
 
-struct EmptyStateView: View {
-    var body: some View {
-        VStack(spacing: 12) {
-            MochiAvatar(status: .idle, size: 64)
-            Text("No agents working")
-                .font(.system(size: 14, weight: .semibold))
-            Text("They'll show up here when an agent reports in.\nTry `mochi demo` to see how it looks.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(24)
+/// Reaches through to this view's own hosting `NSWindow` and forces it transparent/non-opaque
+/// — the one piece of this design SwiftUI's `MenuBarExtra` doesn't hand you for free. Without
+/// it, the window's default opaque background shows through as a plain rectangle at every
+/// point our clipped, rounded content doesn't cover. Zero-size and otherwise invisible; safe
+/// to drop into any view's `.background`.
+private struct WindowTransparencyConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async { [weak view] in configure(view?.window) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { [weak nsView] in configure(nsView?.window) }
+    }
+
+    private func configure(_ window: NSWindow?) {
+        guard let window, window.isOpaque else { return }
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
     }
 }

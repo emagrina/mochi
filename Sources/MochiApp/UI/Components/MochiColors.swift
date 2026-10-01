@@ -38,45 +38,42 @@ enum MochiColors {
         dark: NSColor(calibratedRed: 0.95, green: 0.72, blue: 0.70, alpha: 0.30)
     )
 
-    static let attention = dynamic(
-        light: NSColor(calibratedRed: 0.86, green: 0.55, blue: 0.11, alpha: 1),
-        dark: NSColor(calibratedRed: 0.95, green: 0.65, blue: 0.25, alpha: 1)
-    )
-
-    static let errorTint = dynamic(
-        light: NSColor(calibratedRed: 0.80, green: 0.25, blue: 0.22, alpha: 1),
-        dark: NSColor(calibratedRed: 0.92, green: 0.40, blue: 0.37, alpha: 1)
-    )
-
-    static let successTint = dynamic(
-        light: NSColor(calibratedRed: 0.26, green: 0.56, blue: 0.32, alpha: 1),
-        dark: NSColor(calibratedRed: 0.42, green: 0.72, blue: 0.48, alpha: 1)
-    )
 
     // MARK: - Surfaces
 
-    /// The card surface sitting on top of the popover's own `.regularMaterial` background —
-    /// a touch lighter in light mode, a touch lighter-on-dark in dark mode, so each card
-    /// reads as its own soft object without a hard border (reference.png's card language).
-    static let cardSurface = dynamic(
-        light: NSColor(calibratedWhite: 1.0, alpha: 0.55),
-        dark: NSColor(calibratedWhite: 1.0, alpha: 0.07)
+    /// The warm tint layered on top of `.regularMaterial` for the outer panel — this is what
+    /// turns generic system translucency into design-reference.png's warm cream (light) /
+    /// charcoal (dark) glass. `.regularMaterial` alone adapts to whatever's behind the window
+    /// and reads neutral gray; this tint is what gives Mochi its own identity in both
+    /// appearances regardless of desktop background.
+    static let panelTint = dynamic(
+        light: NSColor(calibratedRed: 0.99, green: 0.95, blue: 0.91, alpha: 0.62),
+        dark: NSColor(calibratedRed: 0.13, green: 0.12, blue: 0.11, alpha: 0.55)
     )
 
-    static let cardBorder = dynamic(
-        light: NSColor(calibratedWhite: 1.0, alpha: 0.6),
-        dark: NSColor(calibratedWhite: 1.0, alpha: 0.10)
+    /// The card surface sitting on top of the panel — a touch more opaque and a touch
+    /// warmer than the panel itself, so each card reads as its own soft pillowy object
+    /// through contrast and shadow rather than a border (design-reference.png's card
+    /// language: "material + subtle contrast + spacing + extremely subtle shadow").
+    static let cardSurface = dynamic(
+        light: NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.95, alpha: 0.6),
+        dark: NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.96, alpha: 0.065)
+    )
+
+    static let cardShadow = dynamic(
+        light: NSColor(calibratedRed: 0.55, green: 0.42, blue: 0.32, alpha: 0.16),
+        dark: NSColor(calibratedWhite: 0.0, alpha: 0.35)
     )
 
     /// The subtler, round "chip" buttons (settings gear, row chevron) — visible but quiet
     /// until hovered.
     static let chipSurface = dynamic(
-        light: NSColor(calibratedWhite: 1.0, alpha: 0.6),
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.55),
         dark: NSColor(calibratedWhite: 1.0, alpha: 0.10)
     )
 
     static let chipSurfaceHover = dynamic(
-        light: NSColor(calibratedWhite: 1.0, alpha: 0.9),
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.85),
         dark: NSColor(calibratedWhite: 1.0, alpha: 0.18)
     )
 

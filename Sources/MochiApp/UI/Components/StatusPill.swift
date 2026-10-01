@@ -10,15 +10,15 @@ struct StatusPill: View {
 
     var body: some View {
         let colors = MochiColors.pillColors(for: status)
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             Image(systemName: symbolName)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 11, weight: .bold))
             Text(status.friendlyLabel)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 12.5, weight: .bold))
         }
         .foregroundStyle(colors.foreground)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
         .background(Capsule().fill(colors.background))
     }
 
