@@ -72,7 +72,14 @@ public actor EventInbox {
             queue: DispatchQueue(label: "mochi.event-inbox.watch")
         )
         source.setEventHandler { [weak self] in
-            Task { await self?.drain() }
+            // Binding `self` here (not inside the `Task`) before constructing it is what
+            // keeps this compiling cleanly under Swift 6's strictest concurrency checking —
+            // some toolchains flag `Task { await self?.drain() }` here as the escaping `Task`
+            // closure "sending" the outer closure's own `self?` capture across an isolation
+            // boundary, since `setEventHandler`'s closure runs on an arbitrary Dispatch queue.
+            // Unwrapping first gives the `Task` its own fresh, local, non-optional capture.
+            guard let self else { return }
+            Task { await self.drain() }
         }
         source.setCancelHandler { [fd] in close(fd) }
         source.resume()
