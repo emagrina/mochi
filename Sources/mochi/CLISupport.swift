@@ -64,8 +64,12 @@ enum CLISupport {
 struct SessionSummaryLine {
     static func render(_ session: AgentSession) -> String {
         let elapsedText = formatDuration(session.elapsed)
-        var line = "\(session.provider.displayName.padding(toLength: 8, withPad: " ", startingAt: 0)) "
+        // The agent's own identity (e.g. "Chief of Staff"), not the provider that happens to
+        // be running it — see AgentIdentity.title. The provider only shows up afterward, in
+        // parens, when it's not already redundant with the title.
+        var line = "\(session.displayName.padding(toLength: 16, withPad: " ", startingAt: 0)) "
         line += "\(session.status.friendlyLabel.padding(toLength: 12, withPad: " ", startingAt: 0)) "
+        if let descriptor = session.agentIdentity.secondaryDescriptor { line += "(\(descriptor)) " }
         if let project = session.projectName { line += "\(project)  " }
         line += "· \(elapsedText)  [\(session.id)]"
         return line

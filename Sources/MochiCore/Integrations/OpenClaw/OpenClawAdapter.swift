@@ -21,8 +21,10 @@ import Foundation
 ///     correlate an approval back to a specific agent/session are EXPERIMENTAL and may need
 ///     adjustment; we degrade gracefully (skip the approval, keep the ones we can parse)
 ///     rather than guess wrong.
-///   - `openclaw agents list --json` maps agent ids to workspace directories — used to fill
-///     in `projectPath`/`projectName` for sessions we can attribute to a known agent.
+///   - `openclaw agents list --json` maps agent ids to `identityName` (the real, configured
+///     display name — "Chief of Staff", "Developer" — used as the row's PRIMARY title, not
+///     "OpenClaw") and `workspace` (used for `projectPath` and the "Open Project"/"Open
+///     Terminal" actions).
 ///   - A genuine push-based integration is possible: `openclaw plugins init --type feature`
 ///     scaffolds a real plugin, and `openclaw hooks list` shows OpenClaw's own bundled hooks
 ///     fire on events like `gateway:startup`/`command`/`session:compact:*`. Building a
@@ -73,7 +75,17 @@ public struct OpenClawAdapter: IntegrationAdapter {
         for session in sessions {
             guard let key = session["key"] as? String else { continue }
             let agentId = "openclaw:\(key)"
-            let openClawAgentId = key.split(separator: ":").dropFirst().first.map(String.init)
+            // Session keys look like "agent:<agentId>:<kind>:<uuid>" (e.g.
+            // "agent:lead:dashboard:cb34...") or just "agent:<agentId>:main" for the default
+            // session — verified against this machine's real sessions. `openClawAgentId` is
+            // OpenClaw's own stable agent slug (shared by every session of that agent);
+            // `sessionKind` ("dashboard", "acp", "cron", "main", ...) distinguishes *which*
+            // session of that agent this is, which is exactly what's needed so two rows for
+            // the same agent (e.g. two "Chief of Staff" sessions) read as distinguishable
+            // rather than as an ambiguous duplicate.
+            let keyParts = key.split(separator: ":").map(String.init)
+            let openClawAgentId = keyParts.count > 1 ? keyParts[1] : nil
+            let sessionKind = keyParts.count > 2 ? keyParts[2] : nil
             let agentInfo = openClawAgentId.flatMap { agentsById[$0] }
 
             // OpenClaw's own `status` field ("running", "done", ...) is the real signal —
@@ -90,8 +102,19 @@ public struct OpenClawAdapter: IntegrationAdapter {
                 event: .status,
                 agentId: agentId,
                 provider: "openclaw",
+                // Stable across every session this same OpenClaw agent runs — this is what
+                // lets Mochi recognize "these two rows are the same agent."
+                agentKey: openClawAgentId.map { "openclaw:\($0)" },
+                // identityName IS the real, user-configured name OpenClaw exposes for this
+                // agent (verified via `openclaw agents list --json`) — e.g. "Chief of Staff",
+                // "Developer". This becomes the row's PRIMARY title, not "OpenClaw".
+                agentDisplayName: agentInfo?.identityName,
                 sessionId: session["sessionId"] as? String,
-                project: agentInfo?.identityName ?? openClawAgentId,
+                // `label` is a real OpenClaw-assigned description of THIS session specifically
+                // (a short nickname for a sub-thread, or a fuller task description for a
+                // spawned subagent) — it belongs in `task`, not `project`: it's about what
+                // this run is doing, not what workspace it's in.
+                project: Self.sessionKindLabel(sessionKind),
                 projectPath: agentInfo?.workspace,
                 task: session["label"] as? String,
                 status: status.rawValue,
@@ -100,6 +123,22 @@ public struct OpenClawAdapter: IntegrationAdapter {
                 timestamp: Date()
             )
             _ = try? writer.write(event)
+        }
+    }
+
+    /// A human label for the kind of session this is, when it adds information beyond "this
+    /// is the agent's main session" (which gets no label at all, since that's the default
+    /// and unremarkable case). Unknown/future kind tokens degrade to their raw, capitalized
+    /// form rather than being dropped — still real information, just not one we have a nicer
+    /// name for yet.
+    private static func sessionKindLabel(_ kind: String?) -> String? {
+        guard let kind, kind != "main" else { return nil }
+        switch kind {
+        case "dashboard": return "Dashboard session"
+        case "acp": return "ACP session"
+        case "cron": return "Scheduled run"
+        case "subagent": return "Subagent"
+        default: return kind.capitalized
         }
     }
 

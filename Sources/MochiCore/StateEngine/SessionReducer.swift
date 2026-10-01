@@ -15,6 +15,14 @@ public enum SessionReducer {
         var session = sessions[event.agentId] ?? AgentSession(
             id: event.agentId,
             provider: AgentProvider(rawValue: event.provider ?? "generic"),
+            agentIdentity: AgentIdentity(
+                // No explicit agentKey → this session is its own standalone agent, matching
+                // the CLI's original one-session-per-task behavior. See MochiEvent.agentKey.
+                key: event.agentKey ?? event.agentId,
+                displayName: event.agentDisplayName,
+                role: event.agentRole,
+                provider: AgentProvider(rawValue: event.provider ?? "generic")
+            ),
             status: .starting,
             discovery: event.metadata?["mochi.discoveryKind"] == "detected" ? .detected : .instrumented,
             startedAt: event.timestamp,
@@ -26,7 +34,13 @@ public enum SessionReducer {
         // Fields that make sense to backfill once, the first time we see them, regardless
         // of event ordering (identity-ish information rather than "current state").
         if session.sessionId == nil { session.sessionId = event.sessionId }
-        if let provider = event.provider { session.provider = AgentProvider(rawValue: provider) }
+        if let provider = event.provider { session.agentIdentity.provider = AgentProvider(rawValue: provider) }
+        // Identity fields are refreshed (not backfill-once) the same way `provider` is just
+        // above: an adapter like OpenClaw's reports the agent's display name on every poll,
+        // and should be free to correct/update it rather than being stuck with whatever it
+        // said first.
+        if let displayName = event.agentDisplayName { session.agentIdentity.displayName = displayName }
+        if let role = event.agentRole { session.agentIdentity.role = role }
         if session.projectName == nil { session.projectName = event.project }
         if session.projectPath == nil { session.projectPath = event.projectPath }
         if let metadata = event.metadata {

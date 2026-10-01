@@ -27,7 +27,7 @@ Sources/
   MochiCore/        Platform-agnostic library. No SwiftUI, no AppKit (except where a
                      feature genuinely needs an AppKit type, like NSColor for dynamic
                      colors — isolated to MochiApp's UI layer, not here).
-    Domain/           AgentStatus, AgentSession, AggregateState — the data model.
+    Domain/           AgentStatus, AgentIdentity, AgentSession, AggregateState — the data model.
     EventProtocol/    MochiEvent (the wire format), EventWriter, EventInbox (the watcher).
     StateEngine/      SessionReducer (pure fold function), SessionProjection (disk replay),
                       StaleDetector.
@@ -105,6 +105,28 @@ not duplicated switch statements scattered across the menu bar icon, the popover
 list of sessions (product spec section 47's requirement against duplicated rollup logic). Its
 `Headline` enum encodes the actual priority order (attention > error > active > waiting >
 done/idle/empty) as data, not as scattered if-chains.
+
+### Agent identity vs. session identity
+
+`AgentSession` is keyed by *session* (one run); `AgentIdentity` (a field on every session, not
+a separate dictionary) is keyed by *agent* (who's doing the work). This split exists because
+the original model conflated them: a session's only identity was its own id, so the UI fell
+back to showing the *provider* ("OpenClaw") as the primary title — true but useless, since it
+answers "which runtime" instead of "which agent." Verified live against a real OpenClaw
+install, two sessions of the same agent ("Chief of Staff," running a main conversation and a
+dashboard sub-thread) were indistinguishable from two different agents at a glance; see
+`docs/integrations.md`'s "Agent identity, not provider identity" for the before/after.
+
+`AgentIdentity.title` is a fallback chain (configured display name → short name → role →
+provider), computed in one place and consumed everywhere `AgentSession.displayName` is used —
+the CLI's `list`/`inspect`, the popover row, the detail view, and notifications all got the fix
+by construction rather than needing five separate edits. `AgentIdentity.key` is what lets two
+sessions be *recognized* as the same agent (`OpenClawAdapter` derives it from the session key's
+agent-id segment, stable across that agent's sessions) — Mochi never merges two `AgentSession`
+rows just because they share a key, since that would hide real information (one might be done,
+the other still running); sharing a key only makes both rows display the same resolved name.
+Generic/CLI/Claude Code callers can opt in with `--agent-key`/`--agent-name`; omitting them
+preserves the original one-session-per-task behavior (key defaults to the session's own id).
 
 ## Concurrency and persistence choices
 
