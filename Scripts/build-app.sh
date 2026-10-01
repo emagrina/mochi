@@ -8,6 +8,12 @@ set -eu
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# Single source of truth for the version: the VERSION file for local/dev builds, or
+# MOCHI_VERSION (set by Scripts/release.sh from the git tag in CI, or by hand) to override it
+# without editing anything. Both Info.plist version keys come from this one value — see
+# docs/releasing.md's "Versioning" section for why CFBundleVersion isn't a separate number.
+VERSION_STRING="${MOCHI_VERSION:-$(cat "$ROOT_DIR/VERSION" 2>/dev/null || echo 0.0.0)}"
+
 CONFIG="${1:-debug}"
 if [ "$CONFIG" = "release" ]; then
     SWIFT_CONFIG_FLAG="-c release"
@@ -60,9 +66,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
     <key>CFBundleIdentifier</key>
     <string>dev.mochi.app</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>__VERSION__</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>__VERSION__</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
@@ -72,6 +78,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
     <key>LSMinimumSystemVersion</key>
     <string>15.0</string>
     <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
     <string>Mochi</string>
@@ -83,7 +91,12 @@ cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+# The heredoc above is quoted ('PLIST') specifically so $-expansion doesn't touch anything in
+# it — Info.plist has its own literal `$`-free content anyway, but this keeps that invariant
+# obvious. The version placeholder is substituted afterward instead, in one place.
+sed -i '' "s/__VERSION__/$VERSION_STRING/g" "$APP_DIR/Contents/Info.plist"
+
 echo "==> Ad-hoc code signing"
 codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
 
-echo "==> Built $APP_DIR"
+echo "==> Built $APP_DIR (version $VERSION_STRING)"

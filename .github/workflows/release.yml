@@ -1,0 +1,138 @@
+name: Release
+
+# Fires on an annotated or lightweight tag like v1.0.0, v0.1.0, v2.3.1 — see
+# docs/releasing.md's "GitHub Release" section for the exact `git tag` / `git push` commands.
+on:
+  push:
+    tags:
+      - "v*"
+
+# Only what this workflow actually needs: creating the GitHub Release and uploading the DMG
+# to it. Everything else defaults to no access.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Derive version from the tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "MOCHI_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Verify environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Build (debug)
+        run: swift build
+
+      - name: Run tests
+        run: swift test
+
+      # Decided here, once, rather than re-checked with an `if: secrets.X != ''` in every
+      # later step — GitHub Actions doesn't reliably support referencing `secrets.*` directly
+      # in `if:` conditions, so the usual, well-supported pattern is to resolve it to a step
+      # output first and branch on that instead.
+      - name: Determine signing mode
+        id: signing
+        env:
+          HAS_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' }}
+        run: |
+          if [ "$HAS_CERTIFICATE" = "true" ]; then
+            echo "Apple Developer signing secrets are configured — Mode B (signed + notarized)."
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Apple Developer signing secrets are not configured — Mode A (unsigned)."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build release app
+        run: ./Scripts/build-app.sh release
+
+      - name: Import signing certificate
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: ./Scripts/ci-import-certificate.sh
+
+      - name: Sign app
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: ./Scripts/sign-app.sh .build/Mochi.app
+
+      - name: Notarize app
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_NOTARIZATION_APPLE_ID: ${{ secrets.APPLE_NOTARIZATION_APPLE_ID }}
+          APPLE_NOTARIZATION_PASSWORD: ${{ secrets.APPLE_NOTARIZATION_PASSWORD }}
+          APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
+          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
+        run: ./Scripts/notarize.sh .build/Mochi.app
+
+      - name: Clean up signing keychain
+        if: always() && steps.signing.outputs.enabled == 'true'
+        run: ./Scripts/ci-cleanup-keychain.sh
+
+      - name: Create DMG
+        run: ./Scripts/package-dmg.sh .build/Mochi.app
+
+      - name: Validate DMG
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          DMG_PATH="dist/Mochi-${{ steps.version.outputs.version }}.dmg"
+          MOUNT_DIR=$(mktemp -d "$RUNNER_TEMP/mochi-dmg-verify.XXXXXX")
+          hdiutil attach "$DMG_PATH" -nobrowse -readonly -mountpoint "$MOUNT_DIR" >/dev/null
+          test -d "$MOUNT_DIR/Mochi.app"
+          test -L "$MOUNT_DIR/Applications"
+          test -x "$MOUNT_DIR/Mochi.app/Contents/MacOS/Mochi"
+          if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            codesign --verify --deep --strict "$MOUNT_DIR/Mochi.app"
+            spctl --assess --type execute --verbose=2 "$MOUNT_DIR/Mochi.app" || true
+          fi
+          hdiutil detach "$MOUNT_DIR" -quiet
+          echo "DMG validation passed."
+
+      - name: Upload DMG as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mochi-${{ steps.version.outputs.version }}
+          path: dist/Mochi-${{ steps.version.outputs.version }}.dmg
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SIGNED_NOTE=""
+          if [ "${{ steps.signing.outputs.enabled }}" != "true" ]; then
+            SIGNED_NOTE="
+          **This is an unsigned community build.** Apple Developer ID signing and notarization
+          are not yet configured for this project (see \`docs/releasing.md\`). macOS Gatekeeper
+          will warn when you first open it — right-click (or Control-click) \`Mochi.app\` and
+          choose **Open** to launch it anyway."
+          fi
+          gh release create "${{ steps.version.outputs.tag }}" \
+            "dist/Mochi-${{ steps.version.outputs.version }}.dmg" \
+            --title "Mochi ${{ steps.version.outputs.tag }}" \
+            --notes "Mochi ${{ steps.version.outputs.tag }}.$SIGNED_NOTE"
