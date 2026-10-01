@@ -4,12 +4,15 @@ Mochi is a lightweight, native macOS menu bar companion for monitoring autonomou
 agents — Claude Code, OpenClaw-managed agents, or anything else — running in the background.
 It answers one question at a glance: *are my agents working, waiting, stuck, or done?*
 
-<p align="center"><img src="Resources/AppIcon.iconset/icon_256x256.png" width="128" height="128" alt="Mochi app icon"></p>
+<p align="center"><img src="Resources/AppIcon-preview.png" width="128" height="128" alt="Mochi app icon"></p>
 
-No screenshots of the running app are included in this repo — the environment this was built
-in has no attached display, so none could be honestly captured (see "Verification" below for
-what *was* actually run and checked). The icon above and `MochiAvatar.swift` are the real,
-rendered assets; building and running the app (instructions below) is the fastest way to see it.
+No screenshot gallery of the full UI is included in this repo — building and running the app
+(instructions below) is the fastest way to see it. The icon above is the real, shipped
+`AppIcon.icns`; the menu bar glyph it sits next to (`MochiMenuBarTemplate.png`, a proper
+template image — white in dark menu bars, black in light ones) and `MochiAvatar.swift`'s
+per-status character animations were both verified live, including against this machine's
+actual menu bar, not just rendered in isolation — see `docs/architecture.md`'s "Visual assets"
+section.
 
 ## What it is, concretely
 
@@ -37,7 +40,8 @@ swift test                  # 57 tests — protocol parsing, state transitions, 
 open .build/Mochi.app
 ```
 
-The 🍡 appears in your menu bar. For a release build: `./Scripts/build-app.sh release`.
+The Mochi glyph appears in your menu bar as a proper template icon — white in dark menu bars,
+black in light ones, automatically. For a release build: `./Scripts/build-app.sh release`.
 
 ### See it working immediately
 
