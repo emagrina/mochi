@@ -37,6 +37,29 @@ echo "==> Building MochiApp ($CONFIG)"
 swift build --target MochiApp $SWIFT_CONFIG_FLAG
 
 BIN_PATH=$(swift build --target MochiApp $SWIFT_CONFIG_FLAG --show-bin-path)
+
+# Some toolchains' `--show-bin-path` doesn't match where the executable actually lands (seen
+# on a GitHub Actions runner with a newer Xcode than any used in local development so far) —
+# rather than hardcode a guess at that toolchain's exact layout, just verify the expected
+# location and fall back to a plain filesystem search for the real one if it's not there.
+if [ ! -x "$BIN_PATH/MochiApp" ]; then
+    echo "==> MochiApp not at the reported bin path ($BIN_PATH/MochiApp) — searching .build/ for it"
+    # Scoped to a path containing the actual config name first: a debug build can genuinely
+    # coexist with a release one under .build/ (this script's own debug-build branch and this
+    # release branch both ran in the same job), so an unscoped search could silently grab the
+    # wrong one instead of just failing loudly.
+    FOUND=$(find "$ROOT_DIR/.build" -type f -name MochiApp -perm -u+x -ipath "*$CONFIG*" 2>/dev/null | head -n 1)
+    if [ -z "$FOUND" ]; then
+        FOUND=$(find "$ROOT_DIR/.build" -type f -name MochiApp -perm -u+x 2>/dev/null | head -n 1)
+    fi
+    if [ -z "$FOUND" ]; then
+        echo "error: couldn't find a built MochiApp executable anywhere under .build/" >&2
+        exit 1
+    fi
+    BIN_PATH="$(dirname "$FOUND")"
+    echo "==> Found it at $BIN_PATH"
+fi
+
 APP_DIR="$ROOT_DIR/.build/Mochi.app"
 
 echo "==> Assembling $APP_DIR"
