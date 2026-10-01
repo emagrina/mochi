@@ -12,21 +12,30 @@ struct AgentDetailView: View {
                 if session.discovery == .detected {
                     detectedNotice
                 } else {
-                    infoGrid
+                    card { infoGrid }
                     actions
                     if !session.recentActivity.isEmpty {
-                        activityLog
+                        card { activityLog }
                     }
                 }
             }
             .padding(16)
         }
-        .frame(width: 340)
+        .frame(width: 400, height: 520)
+    }
+
+    /// The same soft rounded surface `AgentCard` uses, reused here for visual consistency
+    /// with the popover's card language rather than a plain flat list.
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(MochiColors.cardSurface))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(MochiColors.cardBorder, lineWidth: 1))
     }
 
     private var header: some View {
         HStack(spacing: 12) {
-            MochiAvatar(status: session.status, provider: session.provider, size: 44)
+            MochiAvatar(status: session.status, identityKey: session.agentIdentity.key, size: 48)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(session.displayName).font(.headline)
@@ -40,7 +49,7 @@ struct AgentDetailView: View {
                 if !context.isEmpty {
                     Text(context).font(.subheadline).foregroundStyle(.secondary)
                 }
-                StatusBadge(status: session.status)
+                StatusPill(status: session.status)
             }
             Spacer()
         }
@@ -67,7 +76,7 @@ struct AgentDetailView: View {
             } else {
                 row("Last active", relativeString(session.lastActivityAt))
             }
-            row("Elapsed", AgentRow.shortDuration(session.elapsed))
+            row("Elapsed", AgentCard.shortDuration(session.elapsed))
             if session.status == .stale {
                 row("Note", "Quiet for a while — Mochi can no longer confirm this is still running.")
             } else if session.status == .offline {

@@ -13,7 +13,7 @@ struct OnboardingView: View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
-                MochiAvatar(status: .working, provider: .generic(""), size: 48)
+                MochiAvatar(status: .working, size: 48)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Welcome to Mochi").font(.title3).bold()
                     Text("A tiny menu bar companion for your coding agents.")
