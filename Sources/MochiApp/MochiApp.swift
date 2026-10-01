@@ -9,13 +9,24 @@ import MochiCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
+    private var statusItemController: StatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Menu-bar-only: no Dock icon, no Cmd-Tab entry, no app menu.
         NSApplication.shared.setActivationPolicy(.accessory)
         model.start()
+        // Not a SwiftUI `MenuBarExtra` — see `StatusItemController` for why: that API wraps
+        // its content in a system-managed container with its own small, fixed corner radius
+        // and opaque background that no content-level modifier can remove, which is exactly
+        // the "rectangular layer behind the rounded panel" this exists to avoid.
+        let controller = StatusItemController(model: model)
+        controller.start()
+        statusItemController = controller
         if ProcessInfo.processInfo.environment["MOCHI_PREVIEW"] != nil {
             NSApplication.shared.activate(ignoringOtherApps: true)
+            // Exercises the *actual* status item panel (not a stand-in) for visual QA,
+            // since clicking the real status item isn't scriptable.
+            controller.showPanel()
         }
     }
 
@@ -33,14 +44,6 @@ struct MochiAppMain: App {
     }
 
     var body: some Scene {
-        MenuBarExtra {
-            PopoverView()
-                .environment(appDelegate.model)
-        } label: {
-            MenuBarLabel(aggregate: appDelegate.model.aggregate, showCount: appDelegate.model.settings.showCountInMenuBar)
-        }
-        .menuBarExtraStyle(.window)
-
         // Lets the popover be rendered in a normal, screenshot-able window for visual
         // development/QA — a MenuBarExtra's own popover can only be opened by a real click on
         // the status item, which isn't scriptable. Completely inert for every real user: the

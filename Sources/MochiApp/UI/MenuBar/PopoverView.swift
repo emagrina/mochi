@@ -13,7 +13,7 @@ struct PopoverView: View {
     @State private var hoveredSessionID: String?
 
     static let panelWidth: CGFloat = 500
-    static let panelCornerRadius: CGFloat = 34
+    static let panelCornerRadius: CGFloat = 42
 
     var body: some View {
         @Bindable var model = model
@@ -46,12 +46,15 @@ struct PopoverView: View {
                 )
         }
         .clipShape(RoundedRectangle(cornerRadius: Self.panelCornerRadius, style: .continuous))
-        .compositingGroup()
-        .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
-        // The system window a MenuBarExtra(.window) popover lives in is opaque by default;
-        // without this, its square corners show through behind our rounded, clipped content
-        // the instant the window is wider/taller than our shape at any point — exactly the
-        // "rectangular layer behind the rounded panel" the design explicitly rules out.
+        // No manual SwiftUI `.shadow()` here on purpose: the real popover's host window
+        // (`StatusItemController`'s `BorderlessPanel`) and the dev preview window are both
+        // non-opaque/clear, and AppKit computes a window's shadow from its actual rendered,
+        // alpha-blended content in that case — so it already follows this rounded silhouette,
+        // not a rectangular frame. A second, software shadow here would just double up.
+        // `WindowTransparencyConfigurator` is the belt-and-suspenders version of that
+        // isOpaque/backgroundColor setup for the dev preview window (a plain SwiftUI `Window`
+        // scene, not something `StatusItemController` touches); the real popover's panel
+        // already gets it directly where it's constructed.
         .background(WindowTransparencyConfigurator())
         .onAppear {
             if !model.settings.hasCompletedOnboarding {
@@ -127,7 +130,7 @@ struct PopoverView: View {
                 }
             }
             .padding(.horizontal, 18)
-            .padding(.bottom, 6)
+            .padding(.bottom, 8)
         }
         .frame(height: cardListHeight)
     }
@@ -142,7 +145,10 @@ struct PopoverView: View {
         let count = max(1, model.visibleSessions.count)
         let needed = CGFloat(count) * cardHeight + CGFloat(count - 1) * gap
         let visibleCap = 4.5 * cardHeight + 3.5 * gap
-        return min(needed, visibleCap) + 4
+        // The +18 (not just the scroll content's own small internal padding) is what keeps
+        // the last card from crowding the panel's own big bottom corner radius when there's
+        // no problem summary below it to provide that margin instead.
+        return min(needed, visibleCap) + 18
     }
 
     /// The empty state keeps the header's own mascot as the only illustration (design spec:
