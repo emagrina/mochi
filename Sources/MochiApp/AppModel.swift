@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MochiCore
 import Observation
@@ -13,6 +14,9 @@ public final class AppModel {
         didSet {
             guard settings != oldValue else { return }
             persistence.save(settings)
+            if settings.appearance != oldValue.appearance {
+                Self.applyAppearance(settings.appearance)
+            }
         }
     }
     /// Bumped once a second so views computing elapsed time re-render. Reading `now` instead
@@ -34,6 +38,7 @@ public final class AppModel {
         self.persistence = PersistenceStore(paths: paths)
         self.inbox = EventInbox(paths: paths)
         self.settings = persistence.loadSettings()
+        Self.applyAppearance(settings.appearance)
 
         let snapshot = persistence.loadSessionSnapshot()
         for session in snapshot { sessions[session.id] = session }
@@ -69,6 +74,23 @@ public final class AppModel {
         for task in tasks { task.cancel() }
         tasks.removeAll()
         coordinator?.stop()
+    }
+
+    /// The one place Settings → Appearance actually takes effect. `NSApplication.appearance`
+    /// is the native override point: any window/panel that doesn't set its own explicit
+    /// `.appearance` (none of ours do — not the SwiftUI Scenes, not `StatusItemController`'s
+    /// custom `NSPanel`) resolves its *effective* appearance from here instead of from the
+    /// system's actual current appearance. Every dynamic color in `MochiColors` — and every
+    /// system material/color SwiftUI itself draws — is resolved against that effective
+    /// appearance at draw time, so one assignment here is genuinely sufficient; there's no
+    /// second place that needs to separately recolor anything, and no window needs to be
+    /// closed/reopened for a live change to redraw correctly.
+    private static func applyAppearance(_ appearance: MochiSettings.Appearance) {
+        switch appearance {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
     }
 
     // MARK: - Derived state
